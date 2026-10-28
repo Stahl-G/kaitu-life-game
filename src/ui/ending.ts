@@ -97,7 +97,7 @@ function lineColumn(s: State, label: string, tone: "base" | "you", perCapita: nu
 }
 function causes(list: Attribution[]) {
   if (!list.length)
-    return `<p class="hint">${t("你在每个抉择上都选了“照现在过”，两条线只差在计划和重心。", "You carried on at every choice; the lines differ only in plans and focus.")}</p>`;
+    return `<p class="sub">${t("每一步都照现在过", "You carried on at every step")}</p>`;
   return `<ol class="causes">${list
     .slice(0, 3)
     .map((a) => {
@@ -108,7 +108,7 @@ function causes(list: Attribution[]) {
       const track = choiceById.get(a.choice)?.track ?? "work";
       return `<li><span class="mark">◆</span><div><b>${a.year} · ${pair(trackLabels[track])}：${esc(choiceName(a))}</b><p>${t("和只把这一步换回“照现在过”相比", "Compared with changing only this step back")}：${t("净资产", "net worth")} ${esc(signed(a.netWorth))}${props ? ` · ${esc(props)}` : ""}</p></div></li>`;
     })
-    .join("")}</ol><p class="hint">${t("算法：把这一步换回“照现在过”，其余不变，同一个世界重放整局，再比较终点。", "Method: change only this step back to carrying on, replay the whole run in the same world and compare the end.")}</p>`;
+    .join("")}</ol>`;
 }
 export function endingPage(attribution: Attribution[]) {
   const run = app.run;
@@ -124,9 +124,9 @@ export function endingPage(attribution: Attribution[]) {
   const marks = run.changed.flatMap((r, i) => r.choices.filter((p) => !p.stay).map((p) => ({ index: i, label: choiceName(p) })));
   const picked = traces.filter((x) => x.when(run, last.state)).slice(0, 3);
   const axesHtml = parallel
-    ? `<div class="axes">${axes.map((k) => `<div class="axis"><span>${pair(axisLabels[k])}</span><span class="bar"><i data-w="${worldAxes(cfg.worldSeed, BRANCH_YEAR)[k]}"></i></span></div>`).join("")}<p class="hint">${t(`${BRANCH_YEAR} 年的五个世界变量，决定了世界往哪边转。`, `The five world variables in ${BRANCH_YEAR} decided where the world turned.`)}</p></div>`
+    ? `<div class="axes"><h3>${t(`${BRANCH_YEAR} 年的世界变量`, `World variables in ${BRANCH_YEAR}`)}</h3>${axes.map((k) => `<div class="axis"><span>${pair(axisLabels[k])}</span><span class="bar"><i data-w="${worldAxes(cfg.worldSeed, BRANCH_YEAR)[k]}"></i></span></div>`).join("")}</div>`
     : "";
-  return `<main class="ending"><section class="ending-head"><p class="eyebrow">${last.year} · ${last.age} ${t("岁 · 推演结束", "years · The run is over")}</p><h1>${esc(cfg.card.name || t("你", "You"))}${t(`，往后推了 ${cfg.years} 年`, `, ${cfg.years} years on`)}</h1></section><section class="card world-end"><p class="eyebrow">${parallel ? t(`平行世界 · ${BRANCH_YEAR} 年转弯 · 科幻推演`, `Parallel worlds · Turned in ${BRANCH_YEAR} · Science fiction`) : t("现实线 · 世界没有分叉", "Reality line · No branch")}</p><h2>${pair(worlds[world].name)}</h2><p class="basis">${esc(pair(worlds[world].basis))}</p><p class="ending-text">${esc(pair(worlds[world].ending))}</p>${hidden ? `<div class="hidden-end"><p class="eyebrow">${t("隐藏世界 · 人机融合", "Hidden world · Human–machine merging")}</p><h3>${esc(pair(hiddenEndings[hidden].title))}</h3><p>${esc(pair(hiddenEndings[hidden].text))}</p></div>` : ""}${axesHtml}</section><section class="card two-lines"><div class="section-head"><h2>${t("同一个世界，两条人生", "One world, two lives")}</h2></div><p class="hint">${t("左边是每个抉择都“照现在过”的你，右边是你的选择。世界、行情和意外完全相同。", "Left: you, carrying on at every choice. Right: your choices. The world, the markets and the accidents are identical.")}</p><div class="lines">${lineColumn(base.state, t("照现在过", "Carrying on"), "base", base.summary.perCapita, base.summary.percentile, last.year)}<div class="line-chart"><div class="legend"><span class="key base">${t("照现在过", "Carrying on")}</span><span class="key you">${t("你的选择", "Your choices")}</span><span class="key mark">${t("你做了不同的选择", "A different choice")}</span></div>${lineChart(
+  return `<main class="ending"><section class="ending-head"><p class="eyebrow">${last.year} · ${last.age} ${t("岁 · 推演结束", "years · The run is over")}</p><h1>${esc(cfg.card.name || t("你", "You"))}${t(`，往后推了 ${cfg.years} 年`, `, ${cfg.years} years on`)}</h1></section><section class="card world-end"><p class="eyebrow">${parallel ? t(`平行世界 · ${BRANCH_YEAR} 年转弯 · 科幻推演`, `Parallel worlds · Turned in ${BRANCH_YEAR} · Science fiction`) : t("现实线 · 世界没有分叉", "Reality line · No branch")}</p><h2>${pair(worlds[world].name)}</h2><p class="basis">${esc(pair(worlds[world].basis))}</p><p class="ending-text">${esc(pair(worlds[world].ending))}</p>${hidden ? `<div class="hidden-end"><p class="eyebrow">${t("隐藏世界 · 人机融合", "Hidden world · Human–machine merging")}</p><h3>${esc(pair(hiddenEndings[hidden].title))}</h3><p>${esc(pair(hiddenEndings[hidden].text))}</p></div>` : ""}${axesHtml}</section><section class="card two-lines"><div class="section-head"><h2>${t("同一个世界，两条人生", "One world, two lives")}</h2></div><div class="lines">${lineColumn(base.state, t("照现在过", "Carrying on"), "base", base.summary.perCapita, base.summary.percentile, last.year)}<div class="line-chart"><div class="legend"><span class="key base">${t("照现在过", "Carrying on")}</span><span class="key you">${t("你的选择", "Your choices")}</span><span class="key mark">${t("你做了不同的选择", "A different choice")}</span></div>${lineChart(
     years,
     [
       { label: t("照现在过", "Carrying on"), values: run.baseline.slice(0, years.length).map((r) => r.summary.netWorth), tone: "base" },
@@ -134,7 +134,7 @@ export function endingPage(attribution: Attribution[]) {
     ],
     marks,
     { height: 260, title: t("两条线的净资产", "Net worth on both lines") },
-  )}</div>${lineColumn(last.state, t("你的选择", "Your choices"), "you", last.summary.perCapita, last.summary.percentile, last.year)}</div></section><section class="card"><h2>${t("改变最多的几步", "The steps that changed most")}</h2>${causes(attribution)}</section><section class="traces">${[...picked.map((x) => ({ title: x.title, text: x.text })), open].map((x) => `<article class="card trace"><h3>${esc(pair(x.title))}</h3><p>${esc(pair(x.text))}</p></article>`).join("")}</section>${app.peers.length ? `<section class="card peers"><h2>${t(`和你同岁的三个人，${last.year} 年`, `Three people your age, ${last.year}`)}</h2><ul>${app.peers.map((p) => `<li><b>${esc(pair(p.name))}</b><span>${esc(pair(p.city))}</span><p>${esc(pair(peerLine(p, (p.years[years.length - 1] ?? p.years.at(-1))?.state ?? run.initial)))}</p></li>`).join("")}</ul></section>` : ""}<section class="ending-actions">${button("png", t("导出对照卡 PNG", "Export comparison PNG"))}${button("save", t("导出这局存档", "Export this life"))}${button("to-replay", t("再推一次 →", "Play again →"), "primary")}</section><p class="disclaimer">${t("这是推演，不是预测。统计数字来自国家统计局、国家卫健委、民政部、公安部和全国银行间同业拆借中心；概率、城市价格、工资倍数和行情是游戏设定。对照卡只含游戏数字和抉择类型，不含昵称、城市、目标和种子。", "A simulation, not a prediction. Statistics come from Chinese official sources; probabilities, city prices, wage multipliers and markets are game settings. The comparison card carries only game numbers and kinds of choices: no alias, city, goals or seeds.")}</p></main>`;
+  )}</div>${lineColumn(last.state, t("你的选择", "Your choices"), "you", last.summary.perCapita, last.summary.percentile, last.year)}</div></section><section class="card"><h2>${t("改变最多的几步", "The steps that changed most")}</h2>${causes(attribution)}</section><section class="traces">${[...picked.map((x) => ({ title: x.title, text: x.text })), open].map((x) => `<article class="card trace"><h3>${esc(pair(x.title))}</h3><p>${esc(pair(x.text))}</p></article>`).join("")}</section>${app.peers.length ? `<section class="card peers"><h2>${t(`和你同岁的三个人，${last.year} 年`, `Three people your age, ${last.year}`)}</h2><ul>${app.peers.map((p) => `<li><b>${esc(pair(p.name))}</b><span>${esc(pair(p.city))}</span><p>${esc(pair(peerLine(p, (p.years[years.length - 1] ?? p.years.at(-1))?.state ?? run.initial)))}</p></li>`).join("")}</ul></section>` : ""}<section class="ending-actions">${button("png", t("导出对照卡 PNG", "Export comparison PNG"))}${button("save", t("导出这局存档", "Export this life"))}${button("to-replay", t("再推一次 →", "Play again →"), "primary")}</section></main>`;
 }
 export interface ReplayOption {
   key: string;
@@ -158,7 +158,7 @@ export function replayPage(list: ReplayOption[]) {
             `<li><button type="button" data-action="replay-key" data-value="${esc(o.key)}" aria-pressed="${o.key === app.replayKey}"><span class="y">${o.year}</span><span>${esc(pair(trackLabels[choiceById.get(o.choice)?.track ?? "work"]))}</span><b>${esc(o.current)}</b></button></li>`,
         )
         .join("")}</ol>`
-    : `<p class="hint">${t("这一局还没有做过抉择。", "No choices have been made in this run yet.")}</p>`;
+    : `<p class="hint">${t("还没有做过抉择", "No choices yet")}</p>`;
   const alternatives = selected
     ? `<div class="replay-options"><p>${t("换成：", "Change to:")}</p><div class="seg wrap" role="group">${selected.options
         .map(
@@ -170,7 +170,7 @@ export function replayPage(list: ReplayOption[]) {
   const worldButtons =
     cfg.mode === "parallel"
       ? `<div class="seg wrap" role="group">${(Object.keys(worlds) as WorldId[]).map((w) => `<button type="button" data-action="replay-world" data-value="${w}">${pair(worlds[w].name)}</button>`).join("")}<button type="button" data-action="replay-world" data-value="random">${t("随机一个世界", "A random world")}</button></div>`
-      : `<p class="hint">${t("现实线没有分叉。用同样的抉择改走平行世界，看看 2035 年以后会怎样。", "The reality line does not branch. Replay the same choices in parallel worlds to see what happens after 2035.")}</p>${button("replay-world", t("改用平行世界再推一次", "Replay in parallel worlds"), "primary", 'data-value="random"')}`;
+      : `${button("replay-world", t("改用平行世界再推一次", "Replay in parallel worlds"), "primary", 'data-value="random"')}`;
   const shelf = app.lines.length
     ? `<section class="card shelf"><h2>${t("这次打开后推过的人生", "Lives played this session")}</h2><div class="table-wrap"><table class="table"><thead><tr><th></th><th>${t("世界", "World")}</th><th>${t("净资产", "Net worth")}</th>${dimensions.map((k) => `<th>${pair(labels[k])}</th>`).join("")}<th></th></tr></thead><tbody>${app.lines
         .map((line, i) => {
@@ -180,7 +180,7 @@ export function replayPage(list: ReplayOption[]) {
         })
         .join("")}</tbody></table></div></section>`
     : "";
-  return `<main class="replay"><h1>${t("再推一次", "Play it again")}</h1>${done ? "" : `<p class="notice">${t(`这一局停在 ${run.changed[app.shown - 1]?.year ?? cfg.year} 年。`, `This run is paused in ${run.changed[app.shown - 1]?.year ?? cfg.year}.`)} ${button("back-to-run", t("回到这一局", "Back to the run"), "text-button")}</p>`}<div class="replay-grid"><section class="card"><h2>${t("同一个世界，只改一件事", "Same world, change one thing")}</h2><p class="hint">${t("选一个做过的抉择，换一个选项。世界、行情和意外都不变，差别只来自这一步。", "Pick a choice you made and change it. World, markets and accidents stay the same; the difference comes from that step alone.")}</p>${choices}${alternatives}</section><section class="card"><h2>${t("同一个我，换一个世界", "Same me, another world")}</h2><p class="hint">${t("保留你的选择，换世界种子或指定一个世界。世界里的工作抉择会按新世界改回“照现在过”。", "Keep your choices and change the world seed or pick a world. Choices that only exist in a world fall back to carrying on.")}</p>${worldButtons}</section><section class="card"><h2>${t("换一个人", "Someone else")}</h2><div class="row">${button("random", t("随机人生 ↗", "A random life ↗"), "primary")}${button("personal", t("用我的资料 ↗", "Use my profile ↗"))}${button("restart-same", t("同一开局从头来", "Start this life over"), "text-button")}</div></section></div>${shelf}</main>`;
+  return `<main class="replay"><h1>${t("再推一次", "Play it again")}</h1>${done ? "" : `<p class="notice">${t(`这一局停在 ${run.changed[app.shown - 1]?.year ?? cfg.year} 年。`, `This run is paused in ${run.changed[app.shown - 1]?.year ?? cfg.year}.`)} ${button("back-to-run", t("回到这一局", "Back to the run"), "text-button")}</p>`}<div class="replay-grid"><section class="card"><h2>${t("同一个世界，只改一件事", "Same world, change one thing")}</h2>${choices}${alternatives}</section><section class="card"><h2>${t("同一个我，换一个世界", "Same me, another world")}</h2>${worldButtons}</section><section class="card"><h2>${t("换一个人", "Someone else")}</h2><div class="row">${button("random", t("随机人生 ↗", "A random life ↗"), "primary")}${button("personal", t("用我的资料 ↗", "Use my profile ↗"))}${button("restart-same", t("同一开局从头来", "Start this life over"), "text-button")}</div></section></div>${shelf}</main>`;
 }
 export function lineLabel(kind: "original" | "changed" | "world", detail = ""): Text {
   if (kind === "original") return ["原来的你", "The original run"];

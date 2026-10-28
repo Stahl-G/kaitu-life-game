@@ -316,11 +316,6 @@ details > summary {
   font-size: 13px;
   color: var(--ink-2);
 }
-.lead {
-  font-size: 17px;
-  color: var(--ink-2);
-  max-width: 36em;
-}
 .tag {
   display: inline-block;
   padding: 1px 8px;
@@ -721,10 +716,7 @@ main {
   max-width: 560px;
 }
 .setup > * + * {
-  margin-top: 8px;
-}
-.setup .hint + .seg {
-  margin-top: 14px;
+  margin-top: 10px;
 }
 .home-foot {
   display: flex;
@@ -747,10 +739,6 @@ main {
   gap: 18px;
   align-items: start;
   margin-top: 24px;
-}
-.import-grid .card p {
-  font-size: 14px;
-  color: var(--ink-2);
 }
 .paste textarea {
   min-height: 210px;
@@ -1312,11 +1300,8 @@ main {
   gap: 12px;
   padding-top: 6px;
 }
-.decision-actions .hint {
-  flex: 1;
-  min-width: 160px;
-}
 .decision-actions .primary {
+  margin-left: auto;
   padding: 10px 20px;
 }
 .decision-bar {
@@ -1660,10 +1645,6 @@ dialog > * + * {
 .ending-actions .primary {
   padding: 11px 24px;
   font-size: 16px;
-}
-.disclaimer {
-  font-size: 12.5px;
-  color: var(--muted);
 }
 /* Replay */
 .replay > * + * {

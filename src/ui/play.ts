@@ -135,7 +135,7 @@ function planCard(state: State, nextYear: number) {
     [trackLabels.far, pair(travelNames[s.travel])],
   ];
   const last = !!app.config && app.shown >= app.config.years;
-  return `<section class="card plans"><div class="section-head"><h2>${t("计划", "Plans")}</h2>${button("drawer", t("改计划", "Change"), "quiet small", `data-value="plan"${last || app.review !== null ? " disabled" : ""}`)}</div><dl>${rows.map(([k, v]) => `<div><dt>${pair(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl><p class="hint">${last ? t("这是最后一年，计划不再改动。", "This is the last year; plans no longer change.") : next ? t(`已改：以上是 ${nextYear} 年起的计划`, `Changed: this is the plan from ${nextYear}`) : t(`改动从 ${nextYear} 年起生效`, `Changes apply from ${nextYear}`)}</p></section>`;
+  return `<section class="card plans"><div class="section-head"><h2>${t("计划", "Plans")}</h2>${button("drawer", t("改计划", "Change"), "quiet small", `data-value="plan"${last || app.review !== null ? " disabled" : ""}`)}</div><dl>${rows.map(([k, v]) => `<div><dt>${pair(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl><p class="hint">${last ? t("最后一年", "Final year") : next ? t(`${nextYear} 年起的计划 · 已改`, `Plan from ${nextYear} · changed`) : t(`改动 ${nextYear} 年起生效`, `Changes apply from ${nextYear}`)}</p></section>`;
 }
 function factsHtml(ids: string[] | undefined) {
   return (ids ?? []).filter((id): id is FactId => id in facts).map((id) => factLine(id)).join("");
@@ -145,7 +145,7 @@ function beat(st: Story) {
 }
 function summaryBeat(ch: Chapter) {
   const s = ch.summary;
-  return `<li class="beat kind-summary"><span class="month">${t("年末", "Year end")}</span><div><p>${t(`这一年结束：净资产 ${short(s.netWorth)}（${signed(s.change)}）。家庭人均到手 ${short(s.perCapita)}，${rank(s.percentile)}。`, `Year end: net worth ${short(s.netWorth)} (${signed(s.change)}). Take-home per person ${short(s.perCapita)}, ${rank(s.percentile)}.`)}</p><p class="fact"><span>${t("资料", "Data")}</span>${t("百分位按 2025 年全国五等份收入插值，粗略估算", "Percentile interpolated from 2025 national quintiles; a rough estimate")} <small>${sourceLink("nbsIncome2025")}</small></p></div></li>`;
+  return `<li class="beat kind-summary"><span class="month">${t("年末", "Year end")}</span><div><p>${t(`这一年结束：净资产 ${short(s.netWorth)}（${signed(s.change)}）。家庭人均到手 ${short(s.perCapita)}，${rank(s.percentile)}。`, `Year end: net worth ${short(s.netWorth)} (${signed(s.change)}). Take-home per person ${short(s.perCapita)}, ${rank(s.percentile)}.`)}</p><p class="fact"><span>${t("资料", "Data")}</span><small>${sourceLink("nbsIncome2025")}</small></p></div></li>`;
 }
 /** Beats of a year visible at `progress`; all of them when looking back or once the year has run out. */
 export function beatsHtml(ch: Chapter, progress: number, all: boolean) {
@@ -190,7 +190,8 @@ function journal() {
       `<li><button type="button" data-action="review" data-value="${i}" aria-current="${app.review === i}"><span class="y">${ch.year}</span><span class="a">${ch.age} ${t("岁", "")}</span><span class="s">${picks.map((p) => `◆ ${esc(choiceName(p))}`).join(" ")}${picks.length ? " · " : ""}${t("净资产", "Net")} ${esc(signed(ch.summary.change))}</span></button></li>`,
     );
   }
-  return `<section class="card journal"><div class="section-head"><h2>${t("人生记录", "Life journal")}</h2><span class="hint">${t("点一年回看", "Pick a year to look back")}</span></div>${rows.length ? `<ol>${rows.join("")}</ol>` : `<p class="hint">${t("第一年过完后，这里会一年一行地记下来。", "After the first year, each year gets a line here.")}</p>`}</section>`;
+  if (!rows.length) return "";
+  return `<section class="card journal"><h2>${t("人生记录", "Life journal")}</h2><ol>${rows.join("")}</ol></section>`;
 }
 function stepControls(option: Option, p: Pending) {
   const sel = app.selection;
@@ -223,13 +224,13 @@ export function decisionCard(p: Pending) {
   if (app.collapsed)
     return `<section class="card decision-bar" role="status"><b>${t("抉择待定 · 时间暂停", "Choice waiting · Time paused")}</b><span>${esc(pair(choice.title(p.state, p.context)))}</span>${button("expand", t("展开抉择", "Show the choice"), "primary")}</section>`;
   const option = (o: Option) =>
-    `<button type="button" class="option" data-action="choose" data-value="${o.id}" aria-pressed="${app.selection?.option === o.id}"${o.blocked ? " disabled" : ""}><strong>${esc(pair(o.label))}</strong>${o.costs.map((c) => `<span class="cost">${esc(pair(c))}</span>`).join("")}${o.effects.map((e) => `<span class="effect">${esc(pair(e))}</span>`).join("")}${o.id === stayId ? `<em class="stay-tag">${t("“照现在过”会选这个", "The carry-on line picks this")}</em>` : ""}${o.blocked ? `<span class="blocked">${esc(pair(o.blocked))}</span>` : ""}</button>`;
-  return `<section class="card decision" aria-labelledby="decision-title"><p class="eyebrow">${pair(trackLabels[choice.track])} · ${t(`${p.context.year} 年初`, `Early ${p.context.year}`)} · ${t("时间已暂停", "Time paused")}</p><h2 id="decision-title">${esc(pair(choice.title(p.state, p.context)))}</h2><p class="body">${esc(pair(choice.body(p.state, p.context)))}</p>${factsHtml(choice.facts)}<div class="options">${options.map(option).join("")}</div>${selected?.step ? stepControls(selected, p) : ""}${app.error ? `<p class="error" role="alert">${esc(app.error)}</p>` : ""}<div class="decision-actions">${button("collapse", t("先收起，看看账本", "Set aside and check the books"), "text-button")}<span class="hint">${selected ? t("选好后，这一年继续", "Confirm and the year carries on") : t("先选一项；只算当下能算清的账，不预告结果", "Pick one; costs are shown, outcomes are not")}</span>${button("commit", selected ? t(`确定：${pair(selected.label)} →`, `Confirm: ${pair(selected.label)} →`) : t("确定 →", "Confirm →"), "primary", selected && !app.committing ? "" : "disabled")}</div></section>`;
+    `<button type="button" class="option" data-action="choose" data-value="${o.id}" aria-pressed="${app.selection?.option === o.id}"${o.blocked ? " disabled" : ""}><strong>${esc(pair(o.label))}</strong>${o.costs.map((c) => `<span class="cost">${esc(pair(c))}</span>`).join("")}${o.effects.map((e) => `<span class="effect">${esc(pair(e))}</span>`).join("")}${o.id === stayId ? `<em class="stay-tag">${t("照现在过", "Carrying on")}</em>` : ""}${o.blocked ? `<span class="blocked">${esc(pair(o.blocked))}</span>` : ""}</button>`;
+  return `<section class="card decision" aria-labelledby="decision-title"><p class="eyebrow">${pair(trackLabels[choice.track])} · ${t(`${p.context.year} 年初`, `Early ${p.context.year}`)} · ${t("时间已暂停", "Time paused")}</p><h2 id="decision-title">${esc(pair(choice.title(p.state, p.context)))}</h2><p class="body">${esc(pair(choice.body(p.state, p.context)))}</p>${factsHtml(choice.facts)}<div class="options">${options.map(option).join("")}</div>${selected?.step ? stepControls(selected, p) : ""}${app.error ? `<p class="error" role="alert">${esc(app.error)}</p>` : ""}<div class="decision-actions">${button("collapse", t("先收起", "Set aside"), "text-button")}${button("commit", selected ? t(`确定：${pair(selected.label)} →`, `Confirm: ${pair(selected.label)} →`) : t("确定 →", "Confirm →"), "primary", selected && !app.committing ? "" : "disabled")}</div></section>`;
 }
 function finishCard() {
   const ch = current();
   if (!ch) return "";
-  return `<section class="card finish"><p class="eyebrow">${t("推演结束", "THE RUN IS OVER")}</p><h2>${ch.year} · ${ch.age} ${t("岁", "years")}</h2><p>${t("两条人生已经走到同一个终点年份。看看它们差在哪里。", "Both lives have reached the same final year. See where they differ.")}</p>${button("ending", t("看结局 →", "See the ending →"), "primary")}</section>`;
+  return `<section class="card finish"><p class="eyebrow">${t("推演结束", "THE RUN IS OVER")}</p><h2>${ch.year} · ${ch.age} ${t("岁", "years")}</h2>${button("ending", t("看结局 →", "See the ending →"), "primary")}</section>`;
 }
 function sceneCard(s: State, year: number) {
   const where = s.place === "hometown" ? s.hometown : s.city;
@@ -261,7 +262,7 @@ function moneyCard(s: State, index: number) {
           [],
           { height: 150, width: 300, title: t("净资产：两条线", "Net worth on both lines") },
         )}`
-      : `<p class="hint">${t("第一年过完后，这里会画出两条线的净资产。", "After the first year, both lines' net worth is drawn here.")}</p>`;
+      : "";
   return `<section class="card money"><div class="section-head"><h2>${t("钱", "Money")}</h2><span class="tag">${t("模拟人民币", "Simulated RMB")}</span></div><p class="hero">${short(netWorth(s.assets))}</p><p class="sub">${t("净资产", "Net worth")}${ch ? ` · ${t("这一年", "this year")} ${esc(signed(ch.summary.change))}` : ""}</p>${ch ? `<p class="rank">${t("家庭人均到手", "Take-home per person")} ${short(ch.summary.perCapita)} · ${esc(rank(ch.summary.percentile))}</p>` : ""}${chart}${ch ? `<dl class="kv"><div><dt>${t("这一年收入", "Income")}</dt><dd>${short(inflow)}</dd></div><div><dt>${t("这一年支出", "Spending")}</dt><dd>${short(outflow)}</dd></div><div><dt>${t("负债", "Debts")}</dt><dd>${short(s.assets.mortgage + s.assets.carLoan + s.assets.debt)}</dd></div></dl>` : ""}${button("drawer", t("打开账本", "Open the books"), "", 'data-value="money"')}</section>`;
 }
 function familyCard(s: State, year: number) {
@@ -298,7 +299,7 @@ function peersCard(index: number) {
       const year = index >= 0 ? p.years[index] : null;
       return `<li><b>${esc(pair(p.name))}</b><span>${esc(pair(p.city))}</span><p>${year ? esc(pair(peerLine(p, year.state))) : esc(pair(p.job))}</p></li>`;
     })
-    .join("")}</ul><p class="hint">${t("虚构人物，和你在同一个世界里各自过日子。", "Invented people living their own lives in the same world.")}</p></section>`;
+    .join("")}</ul></section>`;
 }
 function worldCard(ch: Chapter | null) {
   const cfg = app.config;
@@ -309,8 +310,8 @@ function worldCard(ch: Chapter | null) {
   const head = cfg.mode === "parallel"
     ? branched && market
       ? `<p class="world-name">${esc(pair(worlds[market.world].name))}</p><p class="hint">${esc(pair(worlds[market.world].basis))} · ${t("科幻推演", "Science fiction")}</p>`
-      : `<p class="hint">${t(`${BRANCH_YEAR} 年以前大家走在同一条线上；之后世界会转向六个之一。`, `Until ${BRANCH_YEAR} everyone shares one line; then the world turns into one of six.`)}</p>`
-    : `<p class="hint">${t("现实线：世界按现在的统计缓慢变化，不分叉。", "Reality line: the world changes slowly along current statistics.")}</p>`;
+      : `<p class="world-name">${t("平行世界", "Parallel worlds")}</p><p class="hint">${t(`${BRANCH_YEAR} 年分叉`, `Branches in ${BRANCH_YEAR}`)}</p>`
+    : `<p class="world-name">${t("现实线", "Reality line")}</p>`;
   const meters =
     cfg.mode === "parallel" && ch
       ? `<div class="axes">${axes
@@ -384,11 +385,11 @@ function moneyOverview(index: number) {
       .map(([k, v]) => `<div class="hbar ${cls}"><span>${k}</span><span class="bar"><i data-w="${v / max}"></i></span><b>${short(v)}</b></div>`)
       .join("");
   const table = `<details id="money-table"><summary>${t("看表格", "As a table")}</summary><table class="table"><thead><tr><th>${t("年份", "Year")}</th><th>${t("照现在过", "Carrying on")}</th><th>${t("你的选择", "Your choices")}</th></tr></thead><tbody>${years.map((y, i) => `<tr><td>${y}</td><td>${money(base[i])}</td><td>${money(you[i])}</td></tr>`).join("")}</tbody></table></details>`;
-  return `<p class="hero">${short(netWorth(a))}</p><p class="sub">${t("净资产 = 资产 − 负债，全部是模拟人民币", "Net worth = assets − debts, all simulated RMB")}</p>${years.length > 1 ? `<div class="legend"><span class="key base">${t("照现在过", "Carrying on")}</span><span class="key you">${t("你的选择", "Your choices")}</span><span class="key mark">${t("你做了不同的选择", "A different choice")}</span></div>${lineChart(years, [{ label: t("照现在过", "Carrying on"), values: base, tone: "base" }, { label: t("你的选择", "Your choices"), values: you, tone: "you" }], marks)}${table}` : ""}<h3>${t("资产", "Assets")}</h3>${bars(items, "asset") || `<p class="hint">${t("还没有资产", "No assets yet")}</p>`}<h3>${t("负债", "Debts")}</h3>${bars(debts, "debt") || `<p class="hint">${t("没有负债", "No debts")}</p>`}`;
+  return `<p class="hero">${short(netWorth(a))}</p><p class="sub">${t("净资产 · 模拟人民币", "Net worth · simulated RMB")}</p>${years.length > 1 ? `<div class="legend"><span class="key base">${t("照现在过", "Carrying on")}</span><span class="key you">${t("你的选择", "Your choices")}</span><span class="key mark">${t("你做了不同的选择", "A different choice")}</span></div>${lineChart(years, [{ label: t("照现在过", "Carrying on"), values: base, tone: "base" }, { label: t("你的选择", "Your choices"), values: you, tone: "you" }], marks)}${table}` : ""}<h3>${t("资产", "Assets")}</h3>${bars(items, "asset") || `<p class="hint">${t("还没有资产", "No assets yet")}</p>`}<h3>${t("负债", "Debts")}</h3>${bars(debts, "debt") || `<p class="hint">${t("没有负债", "No debts")}</p>`}`;
 }
 function moneyYear(index: number) {
   const ch = app.run?.changed[index];
-  if (!ch) return `<p class="hint">${t("第一年过完后才有这一年的账。", "The year's accounts appear once the first year ends.")}</p>`;
+  if (!ch) return `<p class="hint">${t("还没有过完的一年", "No year finished yet")}</p>`;
   const j = ch.journal;
   const inc = j.entries.filter((e) => e.kind === "income");
   const exp = j.entries.filter((e) => e.kind === "expense");
@@ -439,7 +440,7 @@ export function planDrawer() {
     `<div class="seg" role="group">${list.map(([v, l]) => `<button type="button" data-action="plan" data-key="${key}" data-value="${v}" aria-pressed="${value === v}">${l}</button>`).join("")}</div>`;
   return drawer(
     t("计划", "Plans"),
-    `<div class="sheet-body plans-form"><p class="hint">${t(`这一年已经开始，改动从 ${nextYear} 年起生效。计划会一直执行，直到你再改。`, `This year has started; changes apply from ${nextYear} and stay in force until you change them.`)}</p><section><h3>${pair(trackLabels.work)}</h3>${toggle("jobSearch", plan.habits.jobSearch, t("每两年找一次更好的工作", "Look for a better job every two years"))}${toggle("training", plan.habits.training, t("每两年一次职训", "Training every two years"))}</section><section><h3>${pair(trackLabels.money)}</h3><p>${t("每月定投指数", "Monthly into the index")}</p>${segs("monthly", [0, 500, 1000, 2000, 3000].map((n) => [String(yuan(n)), n ? money(yuan(n)) : t("不投", "None")]), String(plan.habits.monthlyInvestment))}<p>${t(`指数一年跌超过 ${crashThreshold * 100}% 时`, `When the index falls more than ${crashThreshold * 100}% in a year`)}</p>${segs("crash", Object.entries(crashNames).map(([k, v]) => [k, pair(v)]), plan.crash)}<p class="hint">${t("定了规则就不再停下来问；“照现在过”的那条线按性格随机反应。", "With a rule set you are not asked again; the carry-on line reacts by temperament.")}</p></section><section><h3>${pair(trackLabels.family)}</h3><p>${t("父母 60 岁以后，每年给父母", "After a parent turns 60, each year send")}</p>${segs("parents", parentsSupportOptions.map((n) => [String(n), n ? money(n) : t("不给", "Nothing")]), String(plan.parentsSupport))}</section><section><h3>${pair(trackLabels.health)}</h3>${toggle("exercise", plan.exercise, t("运动习惯（每年约 ¥2,400，健康 +2）", "Exercise habit (about ¥2,400 a year, health +2)"))}<p class="hint">${t("保险在抉择里买；生病的概率按年龄上升（游戏设定）。", "Insurance is bought in a choice; illness becomes likelier with age (game setting).")}</p></section><section><h3>${pair(trackLabels.far)}</h3>${segs("travel", Object.entries(travelNames).map(([k, v]) => [k, pair(v)]), plan.travel)}</section></div>`,
+    `<div class="sheet-body plans-form"><p class="hint">${t(`${nextYear} 年起生效`, `From ${nextYear}`)}</p><section><h3>${pair(trackLabels.work)}</h3>${toggle("jobSearch", plan.habits.jobSearch, t("每两年找一次更好的工作", "Look for a better job every two years"))}${toggle("training", plan.habits.training, t("每两年一次职训", "Training every two years"))}</section><section><h3>${pair(trackLabels.money)}</h3><p>${t("每月定投指数", "Monthly into the index")}</p>${segs("monthly", [0, 500, 1000, 2000, 3000].map((n) => [String(yuan(n)), n ? money(yuan(n)) : t("不投", "None")]), String(plan.habits.monthlyInvestment))}<p>${t(`指数一年跌超过 ${crashThreshold * 100}% 时`, `When the index falls more than ${crashThreshold * 100}% in a year`)}</p>${segs("crash", Object.entries(crashNames).map(([k, v]) => [k, pair(v)]), plan.crash)}</section><section><h3>${pair(trackLabels.family)}</h3><p>${t("父母 60 岁以后，每年给父母", "After a parent turns 60, each year send")}</p>${segs("parents", parentsSupportOptions.map((n) => [String(n), n ? money(n) : t("不给", "Nothing")]), String(plan.parentsSupport))}</section><section><h3>${pair(trackLabels.health)}</h3>${toggle("exercise", plan.exercise, t("运动习惯（每年约 ¥2,400，健康 +2）", "Exercise habit (about ¥2,400 a year, health +2)"))}</section><section><h3>${pair(trackLabels.far)}</h3>${segs("travel", Object.entries(travelNames).map(([k, v]) => [k, pair(v)]), plan.travel)}</section></div>`,
   );
 }
 export function rulesDrawer() {
@@ -454,11 +455,11 @@ export function rulesDrawer() {
     .join("");
   return drawer(
     t("规则、参数与来源", "Rules, settings and sources"),
-    `<div class="sheet-body rules"><p>${t("这是推演，不是预测。统计数字来自下面的公开资料；概率、城市价格、工资倍数和行情参数是游戏设定，写明了就不冒充统计。", "This is a simulation, not a prediction. Statistics come from the public sources below; probabilities, city prices, wage multipliers and market parameters are game settings and are labelled as such.")}</p><h3>${t("统计来源", "Statistical sources")}</h3><ul>${sourceRows}</ul><h3>${t("城市设定（游戏设定）", "City settings (game settings)")}</h3><div class="table-wrap"><table class="table"><thead><tr><th>${t("城市类型", "City type")}</th><th>${t("一居月租", "1-bed rent")}</th><th>${t("房价/㎡", "Price/m²")}</th><th>${t("一人年生活费", "Living / year")}</th><th>${t("工资倍数", "Wage ×")}</th></tr></thead><tbody>${tierRows}</tbody></table></div><h3>${t("行情（游戏设定）", "Markets (game settings)")}</h3><ul>${(["deposits", "bonds", "stocks", "property"] as const).map((k) => `<li>${pair(entryLabels[k])}: μ ${(marketConfig[k].mean * 100).toFixed(1)}%, σ ${(marketConfig[k].volatility * 100).toFixed(1)}%</li>`).join("")}<li>${t(`每年衰退概率 ${marketConfig.crisisProbability * 100}%，平行世界里按世界加减`, `Recession odds ${marketConfig.crisisProbability * 100}% a year, adjusted by world in parallel mode`)}</li></ul><h3>${t("人生事件（游戏设定）", "Life events (game settings)")}</h3><ul><li>${t(`住院：30 岁每年约 ${percent(lifeRates.hospital(30), 1)}，之后每年加 0.12 个百分点`, `Hospital stay: about ${percent(lifeRates.hospital(30), 1)} a year at 30, rising 0.12 points a year`)}</li><li>${t(`失业：35–49 岁每年约 ${percent(lifeRates.jobLoss(40), 1)}，衰退年翻倍；找到工作的基础概率每年 ${percent(lifeRates.rehire)}`, `Job loss: about ${percent(lifeRates.jobLoss(40), 1)} a year at 35–49, doubled in recessions; finding work starts at ${percent(lifeRates.rehire)} a year`)}</li><li>${t(`退休：${lifeRates.retirementAge} 岁，养老金按最后工资的 45%`, `Retirement at ${lifeRates.retirementAge} with a pension of 45% of final pay`)}</li><li>${t("主角不会死亡；疾病只写一行，不描写过程。", "The player never dies; illness gets one line, never a scene.")}</li></ul>${factLine("lifeExpectancy2024")}</div>`,
+    `<div class="sheet-body rules"><h3>${t("统计来源", "Statistical sources")}</h3><ul>${sourceRows}</ul><h3>${t("城市设定（游戏设定）", "City settings (game settings)")}</h3><div class="table-wrap"><table class="table"><thead><tr><th>${t("城市类型", "City type")}</th><th>${t("一居月租", "1-bed rent")}</th><th>${t("房价/㎡", "Price/m²")}</th><th>${t("一人年生活费", "Living / year")}</th><th>${t("工资倍数", "Wage ×")}</th></tr></thead><tbody>${tierRows}</tbody></table></div><h3>${t("行情（游戏设定）", "Markets (game settings)")}</h3><ul>${(["deposits", "bonds", "stocks", "property"] as const).map((k) => `<li>${pair(entryLabels[k])}: μ ${(marketConfig[k].mean * 100).toFixed(1)}%, σ ${(marketConfig[k].volatility * 100).toFixed(1)}%</li>`).join("")}<li>${t(`每年衰退概率 ${marketConfig.crisisProbability * 100}%，平行世界里按世界加减`, `Recession odds ${marketConfig.crisisProbability * 100}% a year, adjusted by world in parallel mode`)}</li></ul><h3>${t("人生事件（游戏设定）", "Life events (game settings)")}</h3><ul><li>${t(`住院：30 岁每年约 ${percent(lifeRates.hospital(30), 1)}，之后每年加 0.12 个百分点`, `Hospital stay: about ${percent(lifeRates.hospital(30), 1)} a year at 30, rising 0.12 points a year`)}</li><li>${t(`失业：35–49 岁每年约 ${percent(lifeRates.jobLoss(40), 1)}，衰退年翻倍；找到工作的基础概率每年 ${percent(lifeRates.rehire)}`, `Job loss: about ${percent(lifeRates.jobLoss(40), 1)} a year at 35–49, doubled in recessions; finding work starts at ${percent(lifeRates.rehire)} a year`)}</li><li>${t(`退休：${lifeRates.retirementAge} 岁，养老金按最后工资的 45%`, `Retirement at ${lifeRates.retirementAge} with a pension of 45% of final pay`)}</li><li>${t("主角不会死亡；疾病只写一行，不描写过程。", "The player never dies; illness gets one line, never a scene.")}</li></ul>${factLine("lifeExpectancy2024")}</div>`,
   );
 }
 export function restartDialog() {
-  return `<dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">${t("要重玩这一局吗？", "Replay this life?")}</h2><p>${t("这一局还没走完。你可以先去重玩页：改一件事、换一个世界，原来的这局会留在对照里。", "This run is not finished. The replay page lets you change one thing or the world; this run stays for comparison.")}</p><div class="dialog-actions">${button("dialog-cancel", t("取消，回到这一局", "Cancel and go back"), "primary")}${button("dialog-replay", t("去重玩页", "Open the replay page"))}${button("dialog-restart", t("同一开局从头来", "Start this life over"), "text-button")}</div></dialog>`;
+  return `<dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">${t("要重玩这一局吗？", "Replay this life?")}</h2><p>${t(`这一局停在 ${current()?.year ?? app.config?.year ?? ""} 年。`, `This run is paused in ${current()?.year ?? app.config?.year ?? ""}.`)}</p><div class="dialog-actions">${button("dialog-cancel", t("取消，回到这一局", "Cancel and go back"), "primary")}${button("dialog-replay", t("去重玩页", "Open the replay page"))}${button("dialog-restart", t("同一开局从头来", "Start this life over"), "text-button")}</div></dialog>`;
 }
 export function menu() {
   if (!app.menu) return "";
