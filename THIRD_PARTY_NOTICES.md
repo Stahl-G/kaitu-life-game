@@ -7,7 +7,7 @@
 - Fixed source commit: `fcc6bd89bb1e2f895ada70c323665ddfb8cfa52d`
 - Original draft pull request (preserved): https://github.com/Stahl-G/rensheng-kaitu/pull/282
 - Original project license: MIT, copyright (c) 2026 Guo Yihong. Full text is preserved in `LICENSE`.
-- The initial independent repository copies the tracked game source, assets, tests and build scripts. Runtime modules and test files are unchanged. README paths, CI location and an optional loopback server `PORT` are adapted for standalone use.
+- The initial import (commit `4a5b88c`) copied the tracked game source, assets, tests and build scripts unchanged, adapting only README paths, CI location and an optional loopback server `PORT` for standalone use. Later commits develop the game in this repository.
 - No main application, personal records, saves, credentials or acceptance screenshots are included. This repository is the source for subsequent game development; the original PR is a historical baseline.
 
 ## Remake

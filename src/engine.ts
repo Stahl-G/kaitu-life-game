@@ -7,8 +7,10 @@ import { pickWeight } from "./vendor/remake/random.js";
 export { sample } from "./random.js";
 export interface Event {
   id: string;
-  text: Text;
+  /** Static text, or text built from the player's situation (city, partner, goals). */
+  text: Text | ((s: State) => Text);
   cooldown: number;
+  facts?: Story["facts"];
   include?: string;
   eligible?: (s: State, m: Market) => boolean;
   weight: (s: State, m: Market) => number;
@@ -62,9 +64,10 @@ export function createEngine(definitions: Event[]) {
         e.apply?.(s, j, m);
         stories.push({
           id: e.id,
-          text: e.text,
+          text: typeof e.text === "function" ? e.text(s) : e.text,
           kind: "ordinary",
           ...(e.support ? { support: e.support } : {}),
+          ...(e.facts ? { facts: e.facts } : {}),
         });
         for (const b of e.branch ?? []) {
           const next = catalog.get(b.event);

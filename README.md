@@ -1,70 +1,66 @@
-# Kaitu Life Game · 独立网页游戏原型
+# Kaitu Life Game · 人生往后推
 
-本仓库是独立游戏的后续源码入口，技术名 `kaitu-life-game` 暂不决定最终游戏名。初始版本逐文件复制自 [Stahl-G/rensheng-kaitu](https://github.com/Stahl-G/rensheng-kaitu) 的 `prototypes/life-simulation`，固定基线 [`fcc6bd89bb1e2f895ada70c323665ddfb8cfa52d`](https://github.com/Stahl-G/rensheng-kaitu/tree/fcc6bd89bb1e2f895ada70c323665ddfb8cfa52d/prototypes/life-simulation)，原 [Draft PR #282](https://github.com/Stahl-G/rensheng-kaitu/pull/282) 保留。此复制只调整仓库根目录运行说明、CI 与可选本地端口，不改玩法，不在两个仓库双写。
+一个桌面优先的网页游戏：从你现在的年龄出发，把接下来的 10、20 或 30 年推演一遍。你定计划，世界和统计推着走；遇到真正的门槛（买房、成家、孩子、父母、保险、远行、换工作）时间才停下来让你选。每个选择都和“照现在过”的你放在同一个世界里比较。
 
-当前是成人开局、12 年双线模拟切片。六世界、隐藏结局、PPP、真实 Kaitu 数据接入与公开网页托管尚未实现。源码公开不等于部署游戏。
+技术名 `kaitu-life-game` 暂不决定最终游戏名。初始版本复制自 [Stahl-G/rensheng-kaitu](https://github.com/Stahl-G/rensheng-kaitu) 的 `prototypes/life-simulation`（基线 `fcc6bd89`），来源见 `THIRD_PARTY_NOTICES.md`。设计说明、审阅结论和待确认的问题见 [`docs/DESIGN.md`](docs/DESIGN.md)。
 
 ## 运行
 
 ```sh
-git clone https://github.com/Stahl-G/kaitu-life-game.git
-cd kaitu-life-game
-npm start
+npm start        # http://127.0.0.1:4783 ，端口占用时 PORT=4784 npm start
+npm test         # 构建并运行行为测试
+node build.mjs   # 生成纯静态 dist/
 ```
 
-http://127.0.0.1:4783 。若端口已占用，可用 `PORT=4784 npm start`。Node 22.19+，无需安装依赖。`npm test` 构建并运行行为测试；`node build.mjs` 生成纯静态 `dist/`。全部资源用相对路径，支持静态站的 `/play/` base path；当前仅 loopback 本地服务器。Node 类型擦除 API 会打印 experimental 提示，浏览器收到普通 ES modules。
+Node 22.19+，无依赖。Node 的类型擦除 API 会打印 experimental 提示，浏览器收到普通 ES modules。全部资源用相对路径，可放在静态站子路径下。页面 CSP 禁止内联样式和任何网络请求：游戏不上传、不联网、不用 localStorage。
 
-随机人生一键开局；AI 角色卡入口可选。第一年立即出现，普通年度 1×/2×/4× 自动推进（思考间隔 45/22.5/11.25 秒），第 3/6/9/12 年前暂停抉择。可暂停、快进、回看、重玩同一开局。查看细节或标签隐藏即停表，继续须主动点击并重新计一个完整年度间隔；后台延迟不补跑年份。时间栏显示当前约每年时长。主画面是原创人物、住所与工作场景；双线图收在回顾及导出卡。
+## 一局怎么玩
 
-## 当前玩法
+1. **开局**：随机人生（三个虚构角色轮换），或用自己的资料——开图导出的资料包、AI 生成的角色卡、或手填。检查页把你放进 2025 年全国收入分布里，所有游戏起点（年薪、现金、存款、四种状态）都能改，改了不写回资料。选现实线或平行世界，选 10/20/30 年。
+2. **每一年约 45 秒**（2×、4× 可快进）。这一年发生的事按月份陆续出现：1 月的抉择结果、3 月的房租、7 月的世界新闻、11 月的账单催缴……年末给出结算：净资产、家庭人均到手和全国百分位。左右两栏在年末结算前显示年初的状态，不提前泄露结果。
+3. **计划**随时可改，从下一年起生效并一直执行：工作（每两年看机会、职训）、钱（每月定投、指数大跌时的规则）、家庭（每年给父母多少）、健康（运动习惯）、远方（不出门 / 短途 / 每年一次远行），以及下一年的重心。
+4. **抉择**在门槛出现时停表，一年最多两个：保险、买房（再选首付和年限）、买车、结婚 / 同居、要孩子、照顾父母、指数大跌、远行或外派、职业岔路、世界里的工作转折、隐藏世界的桥接。卡片只写当下算得清的成本，不预告结果，并标出“照现在过”会选哪一项。一直选“照现在过”的重复抉择会隔得越来越久，不会每隔几年就来催你。
+5. **结局**：同一个世界里的两条人生——每个抉择都照现在过的你，和你的选择。逐步归因：把某一步换回“照现在过”、其余不变，同一个世界重放整局，比较终点。世界结局、人生痕迹、三个同龄人的近况。
+6. **重玩**在右上角菜单和结局页里，远离时间栏的推进按钮：同一个世界只改一件事（从那一年接着玩，或直接看结局）；同一个我换一个世界（随机或指定六个世界之一）；换一个人。本次打开后推过的人生会列在对照表里。
 
-- 健康、知识、关系、快乐为 0–100 游戏属性，每年重读。未提供的属性在原卡保留 null，模拟取中性 50；不由记录多少、地图清晰度或身份推算低分。无人生总分、疾病诊断或死亡预测。
-- 七类决策：转职、创业、出国、投资、继续读书、照现在过、自定义。有门槛、成本与失败。创业再选贷款或自筹；投资再选债券、指数或房产。自定义保留 project 原文，玩家选择创作、学习或组织活动路线；不宣称没有模型也能理解任意语义。
-- 主职业是单一 role（employed/founder/student/unemployed/retired），abroad/investor 是可叠加状态。固定五句链已经移除；原创事件池按当前身份、属性、年龄、资产与共同世界冲击筛选、加权并冷却。自动条件分支与玩家决策分别在 engine / decisions 中。
-- 入学→考核→毕业/延期；创业→经营/关闭→欠款与睡眠影响→求职恢复。欠款有宽限、催缴、卖资产、合租；只有持续拖欠、无收入、无现金、低支持且无可用伴侣支持等同时满足时才失去稳定住所，恢复押金后可搬回。不存在失败必然一路无家可归。敏感事件附求助链接。
-- 年度重心行内切换。长期习惯为两年求职、两年职训、月末定投；资金或身份不够时挂起，每年重查，执行后重新计算两年间隔。
-- 基线始终均衡、无新习惯、所有抉择照现在过。玩家线保存每次决策与年度计划。两条线共用 worldSeed、年份与市场类别的有地址抽样；各自状态独立，分支不改变后续共同行情。
+查看账本、计划、规则，回看往年，或离开页面，时间都会停下；继续时保留这一年的进度，但不会把已经出现的内容收回。
 
-## 金额、行情与账本
+## 规则与数据
 
-金额全部是模拟人民币，不声称是用户真实财务。内部用整数分；默认游戏起点为现金 ¥26,000、存款 ¥64,000，无其他资产/负债，可通过角色卡 `starting` 修改，不作为用户真实财务。工资由职业、年限、学历、专业、海外状态与共同需求变化计算；所有工资基数、简化 18% 税社保比例和生活支出均是游戏假设，不是税务计算器或劳动市场统计。
+- **金额**全部是模拟人民币，内部用整数分。资产：现金、存款、债券基金、股票指数、房产、车、公积金；负债：欠款和借款、房贷、车贷。每年强制核对：期初净资产 + 收入 − 支出 + 资产涨跌 = 期末净资产；借款、买卖资产、还本金、公积金冲还房贷都是转账，不改变净资产。
+- **工资单**按公开规则计算：基本减除 6 万、七级累进个税、住房租金 / 子女 / 赡养老人 / 房贷利息专项附加扣除（2023 年 8 月起标准）。游戏简化：社保个人 10.5%、公积金 7% 按全部工资计、不设缴费基数上下限、年终奖并入综合所得。不是报税工具。
+- **统计**（`src/stats.ts`）只用公开来源，每条带年份、口径和链接，显示在相关事件和抉择旁：国家统计局收入五等份与中位数、平均工资、失业率，卫健委预期寿命，民政部婚姻登记，公安部机动车保有量，贷款市场报价利率。全国比率不冒充你的个人概率。
+- **游戏设定**写明是设定：五类城市的房租、房价、生活费、工资倍数（`src/places.ts`），行情均值与波动（`src/market.ts`），生病、失业、再就业、退休等概率（`src/life.ts`），保险保费，世界变量的阈值。规则抽屉里全部可见。
+- **世界**：现实线按现在的统计缓慢变化，不分叉。平行世界里，五个世界变量（AI、自动化、不平等、企业权力、地缘压力）按种子随机游走，2035 年转向六个世界之一（延续、赛博朋克、公司战争、后稀缺、AGI 泛滥、集团对抗），分叉之后是科幻推演。另有约 1% 的种子会解锁隐藏世界（人机融合）。玩家的选择从不改变世界。
+- **同龄人**：三个虚构的同龄人和你生活在同一个世界里，按自己的规则过日子，不受你的选择影响。
 
-资产：现金、存款、债券、股票、房产；负债及利率单列。每年账本保存收入、费用、资产回报与转账。借款、买卖资产、还本金是重分类；费用、利息和亏损才改变净资产。未付费用计入欠款，利息计一次，不重复冲减现金。每年强制核对：期初净资产 + 收入 − 费用 + 资产回报 = 期末净资产。
+## 输入、存档与隐私
 
-行情参数集中于 `src/market.ts`。存款/债券/指数/房产的均值与波动均由作者设定，数值来源明确为游戏配置，不能称为机构预测或历史估计。配置附原始机制参考：ICBC 存款挂牌利率页面、SEC Investor.gov 的债券、资产配置与分散投资材料；这些资料不为本游戏具体数值或行为系数背书。危机概率 9% 也是玩法参数。股票和债券用含分配的总回报，不再另加股息；房产只记价格变化，不额外加租金。
+- 角色卡 version 2（`src/card.ts`）：年龄、就业、学历、专业、想做的一件事、四种状态（0–100 或未知，附依据），可选 `background`、`starting`（游戏起点）和 `life`（城市、老家、住房、伴侣、孩子个数、父母年龄段、收入档、存款档、保险、最多三个目标）。`life` 里的钱只有档位，不写具体金额、账户、单位、地址，不写伴侣、孩子、父母的名字和健康情况。未知保持未知，模拟时取中性值。
+- AI 提示词（`cardPrompt`）允许在用户已授权的范围内只读；读不到和没记录分开说明。网页本身不连接任何资料库。
+- 存档 version 3 是命令日志：种子、角色卡、每个抉择的回答、每一年的计划。载入时逐项校验后重放，不恢复任意运行状态。旧的 version 2 存档规则不同，会提示重新开局。
+- 对照卡 PNG 只含游戏数字、就业类型、抉择所属的线和世界名，不含昵称、城市、目标、依据和种子。
 
-定投按 12 次月末入账；月度路径是由共同年度回报开 12 次方得到的平滑结算路径，不是假装取得真实月度行情。每次先结算当月回报，再从有余量的现金投入。知识不修改市场回报；它与分散、费用意识、开始投资和恐慌卖出的弱关联是游戏假设，另外有独立性格随机项。一般知识与学历不等于金融素养。本轮没有把群体统计换算成个人事件概率；将来加入统计型事件须标出原始资料、年份和口径。
+## 代码结构
 
-## 输入与导出
+| 文件 | 内容 |
+| --- | --- |
+| `card.ts` | 角色卡解析、提示词、示例角色 |
+| `model.ts` | 状态、计划、章节等类型 |
+| `finance.ts` · `tax.ts` | 账本与核对 · 工资单与个税 |
+| `places.ts` · `stats.ts` | 城市设定 · 公开统计与来源 |
+| `market.ts` · `world.ts` | 共同行情 · 世界变量、六个世界、隐藏链 |
+| `choices.ts` · `decisions.ts` | 门槛抉择 · 职业岔路与因果链 |
+| `life.ts` · `everyday.ts` · `events.ts` | 疾病、恋爱、失业、退休 · 按处境筛选的日常事件 · 通用事件池 |
+| `engine.ts` · `vendor/remake/` | Remake 的条件 DSL 与加权抽取（MIT） |
+| `simulation.ts` · `peers.ts` | 年度编排、命令日志、归因 · 同龄人 |
+| `playback.ts` | 年度时钟（不补跑后台时间） |
+| `app.ts` · `ui/` · `scene.ts` · `map.ts` | 页面控制 · 各页面 · 原创 SVG 场景 · 对照卡 |
 
-游戏角色卡 version 2：name、age（本轮成人开局 18–90）、role、project、education、specialty、attributes。四属性含 value（0–100/null）及 source；AI 提示词只取最少且有依据的资料，不索取完整记忆、实际资产、疾病或他人信息。JSON 最长 16,000 字符，解析白名单字段、保留未知和依据、统一转义。旧 version 1 五分卡无法无损转换健康/金额，明确要求重新生成，不把旧余量分强行换成资产。
+## 测试覆盖什么
 
-中英文复制和查看提示词共用 `cardPrompt(locale)`：先用当前对话和已有记忆；不足时允许只读工具在用户已经授权的开图工作区或记忆库中读索引、摘要和必要原文，不扩大权限、不扫描整个邮箱/云盘、不写资料。明确记录的年龄、职业、最高已完成学历和专业可以提取；不推断未记载的事实。读取失败与查过仍无记载分别说明，不能把没读当未知。输出的最多三行读取/事实依据说明位于 JSON 之外，现有解析器可接受；四属性的 source 保留“用户指定游戏设定”或“AI 游戏估计及事实依据”，缺项保留 null 与实际原因，不替模拟引擎填成 50。网页自身不连接资料库，仍是用户手动复制、导出、检查、粘贴。
-
-游戏存档 version 2 保存种子、起始卡、决策和年度计划，重新验证并重放命令日志，不直接加载任意运行状态。PNG 只含游戏属性、模拟净资产和决策分叉，不含昵称、project、原始依据、年龄或种子。由用户主动下载，无上传、遥测、localStorage、账号或模型调用。
-
-原 Kaitu 仓库中的 `packages/core/src/onboarding.ts`（parseMemoryPaste/preview/confirm）与 `handover.ts` 已核对（这些模块未复制到此仓库）：真实记忆导入带 Node 文件系统、去重、来源和写入职责。这里仅复用“提示词→贴回→检查”的交互，不另造正式个人档案，也不从游戏分数重造事实。未来双导出应单独保留用户确认的真实源资料，分别导出真实开局资料与游戏记录；本轮不接入它。
+`npm test` 只测真实行为：账本与工资单（含公开税表的分档边界和 100 万元 30 年 3.1% 的等额本息月供）；100 条不同的人生逐年对账、增量推演与从头重放完全相同、两条线共用行情、每年最多两个抉择；计划只从当年起生效、基线不受计划影响；归因按定义重放；六个世界的占比和隐藏链的稀有程度；同样的回答下，两个种子“发生在你身上的事”的平均重合率低于一半；欠款的宽限、催缴、合租、失去固定住所与恢复；知识只改变投资行为、不改变行情；对照卡不含个人文字；同龄人不受玩家选择影响；时钟不补跑。
 
 ## Remake 复用边界
 
-审查基准：[VickScarlet/remake f04888e202e5dfca0df48c51b8a099dc03cf08b4](https://github.com/VickScarlet/remake/tree/f04888e202e5dfca0df48c51b8a099dc03cf08b4)，MIT；许可全文 `src/vendor/remake/LICENSE` 随 dist 分发。无原作事件文案、xlsx、UI 或 1in8b 素材/数值。原创 SVG 场景在 scene.ts。
-
-- 保留 upstream 条件 DSL 与加权抽取工具，在 engine.ts 改造资格检查、效果和条件 branch。每个事件池拥有自己的 Map，生命线独立复制状态，不初始化原作全局数据。
-- sample(worldSeed/lifeSeed, year, category) 是 32 位确定性有地址抽样；不靠两个顺序 RNG 保证共同冲击。原作默认 Math.random 在这里没有被使用。
-- props 只含四属性；无 STAGE/PRACTICE/SHOCK。单一 role 代替互斥职业 flags，删除旧冲突 throw。删掉未使用的 NoRandom/exclude；weight 用于当前动态事件池，branch 保留扩展与循环保护。
-- upstream 原始 data 构建缺 v-transform 的问题与全局 Maps 已在先前审查记录；本轮不安装或运行它，不声称重跑上游测试。
-
-主要模块：card 输入；model 状态；finance 会计；market 共同行情/投资行为；events 原创池；decisions 玩家与因果；simulation 年度编排；app/scene/map 呈现与导出。事件库参数不混入正式 Kaitu schema。
-
-## 验证约定
-
-测试固定种子 acceptance-000…159，配对 0↔1、2↔3…158↔159，对每一种决策策略分别统计多重集重合率 `2 × 共同条目数 / 两局总条目数`。同时报告事件 ID 和去金额/人名后的完整正文；包含决策与后果事件，不能通过替换金额过关。通过门槛是固定 80 对的平均值低于 50%；最大单对也报告，不宣称每一对都低于 50%。同种子相同操作完整相等。
-
-投资测试使用固定 investment-0000…0999，同市场、同初始金额、同持仓与性格，知识 25/85 配对；只通过行为与费用产生差别。报告均值、10/50/90 分位数、亏损人数、固定 10 个百分点分箱的分布重叠率；不能只看均值或给高知识市场溢价。账目、冷却、恢复、未知、存档、基线隔离和图片隐私另有行为测试。
-
-自动测试不替代真人浏览器验收。既有验收与已知限制见原 [PR #282](https://github.com/Stahl-G/rensheng-kaitu/pull/282)：不同种子的剧情重合率平均值达标，但部分配对仍超过 50%；市场数值仍是游戏假设，尚未完成统计校准。截图、个人资料及游戏存档不随源码复制。
-
-
-Character v2 now accepts optional `background` (completed qualification, field of study, industry, occupation, known work experience, evidence) and `starting` (game employment, experience, cash and deposits in simulated RMB). Old four-stat v2 cards and saves remain readable. Root `role` describes employment status; root `education`/`specialty` remain coarse rule tags. Original free text is preserved for review/export, not falsely advertised as separate specialized event logic. Explicit work experience affects income; a deliberate game override takes precedence. Unknown facts stay unknown; editable fallback assumptions live in `starting`, never in the source profile. Fenced JSON and surrounding prose are accepted without evaluation; ambiguous multiple cards are rejected. Failed input is retained for correction.
-
-Desktop layout keeps the live year, pause/speed and next-choice action in a sticky time bar. The original scene is a 220–240px banner; next-year focus and pending decisions appear directly below. The right column separates simulated household, nonzero asset balances, annual income/expenses and expandable journal details. Viewing details pauses playback. A pending choice can collapse without advancing time, and decision callbacks reject a second activation after the choice is committed. Replay lives under the header More menu; an active run requires confirmation, with Cancel/Escape restoring the original playback state and untouched run.
+审查基准 [VickScarlet/remake f04888e2](https://github.com/VickScarlet/remake/tree/f04888e202e5dfca0df48c51b8a099dc03cf08b4)，MIT，许可全文 `src/vendor/remake/LICENSE` 随 dist 分发。保留条件 DSL 与加权抽取，在 `engine.ts` 改造资格、效果与分支；不使用原作的事件文案、表格、界面，也不使用 1in8b 的代码、图片、文案或数值。`sample(seed, year, category)` 是确定性的有地址抽样，所以两条线、同龄人和重玩共用同一个世界。

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blankCard, cardPrompt, parseCard } from "../dist/card.js";
+import { blankCard, cardPrompt, parseCard, startingSettings } from "../dist/card.js";
 import { initialState } from "../dist/simulation.js";
 
 test("generated prompts allow scoped read-only evidence and distinguish unavailable from unrecorded", () => {
@@ -89,4 +89,41 @@ test("pasted prose, fences and quoted braces preserve details; malformed and mul
   legacy.starting = undefined;
   assert.equal(parseCard(JSON.stringify(legacy)).version, 2);
   assert.equal(parseCard(JSON.stringify(legacy)).background.experienceYears, null);
+});
+
+test("the life section carries situations and bands only, and the game start falls back to band midpoints", () => {
+  for (const [locale, terms] of [
+    ["zh", ["只给档位", "不写具体金额", "不写伴侣、孩子、父母的名字和健康情况"]],
+    ["en", ["bands", "exact amounts", "health"]],
+  ])
+    for (const term of terms) assert.ok(cardPrompt(locale).includes(term), `${locale}: ${term}`);
+  const card = blankCard();
+  card.age = 38;
+  card.life = {
+    city: "成都",
+    hometown: "南充",
+    housing: "owned-mortgage",
+    partner: "married",
+    children: 2,
+    parents: "60-70",
+    income: "20-35",
+    savings: "50-100",
+    insurance: "basic-plus",
+    goals: ["带孩子去一次敦煌", "", "学会游泳", "第四条会被截掉"],
+    source: "用户陈述",
+  };
+  const parsed = parseCard(JSON.stringify(card));
+  assert.deepEqual(parsed.life.goals, ["带孩子去一次敦煌", "学会游泳", "第四条会被截掉"]);
+  const start = startingSettings(parsed);
+  assert.equal(start.salary, 270000);
+  assert.equal(start.deposits, 750000 - start.cash);
+  assert.ok(start.estimated.includes("salary"));
+  const state = initialState(parsed, "life");
+  assert.equal(state.housing, "owned");
+  assert.ok(state.mortgage && state.assets.mortgage > 0);
+  assert.equal(state.family.partner, "married");
+  assert.equal(state.family.children.length, 2);
+  assert.ok(state.insurance.medical);
+  for (const life of [{ income: "about-30" }, { housing: "palace" }, { children: -1 }, { goals: "travel" }])
+    assert.throws(() => parseCard(JSON.stringify({ ...card, life: { ...card.life, ...life } })), /life\./);
 });

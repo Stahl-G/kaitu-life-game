@@ -1,649 +1,869 @@
+import { type Card, blankCard, cardPrompt, parseCard, sampleCard } from "./card.js";
+import { type Option, defaultPick, rejectPick } from "./choices.js";
+import { exportPng, mapSvg } from "./map.js";
+import type { CrashRule, Focus, Pick, Plan, Text, Travel, WorldId } from "./model.js";
+import { simulatePeers } from "./peers.js";
+import { beatAt, createYearClock, summaryAt } from "./playback.js";
 import {
-  type Card,
-  type Locale,
-  blankCard,
-  cardPrompt,
-  dimensions,
-  educationLabels,
-  labels,
-  parseCard,
-  roleLabels,
-  sampleCard,
-  specialtyLabels,
-  startingSettings,
-} from "./card.js";
-import { decisionYears, eligibility } from "./decisions.js";
-import { liquid, netWorth, yuan } from "./finance.js";
-import { escapeHtml as e, exportPng, mapSvg } from "./map.js";
-import { marketConfig, marketFor } from "./market.js";
-import {
-  type Decision,
-  type DecisionKind,
-  type Focus,
-  type State,
-  type Story,
-  decisionLabels,
-  focusLabels,
-} from "./model.js";
-import { createYearTimer, yearDuration } from "./playback.js";
-import { sceneSvg } from "./scene.js";
-import {
+  type Attribution,
   type Config,
+  type Pending,
   type Run,
-  YEARS,
-  defaultHabits,
-  initialState,
+  type Years,
+  attribution,
+  continueRun,
   parseSave,
+  planOf,
   simulate,
-  step,
 } from "./simulation.js";
-let locale: Locale = navigator.language.startsWith("zh") ? "zh" : "en";
-let page: "home" | "import" | "review" | "play" = "home";
-let card = blankCard();
-let run: Run | null = null;
-let config: Config | null = null;
-let playing = false;
-let speed = 1;
-let selected = 0;
-let pasted = "";
-let error = "";
-let subchoice: DecisionKind | null = null;
-let choiceCollapsed = false;
-let sampleIndex = 0;
-let restartWasPlaying: boolean | null = null;
+import { BRANCH_YEAR, type Mode, worldFor, worlds } from "./world.js";
+import { button, esc, locale, pair, setLocale, t } from "./ui/dom.js";
+import { type ReplayOption, endingPage, lineLabel, replayPage } from "./ui/ending.js";
+import { homePage, importPage, readReview, reviewCards, reviewPage } from "./ui/pages.js";
+import {
+  beatsHtml,
+  choiceName,
+  menu,
+  moneyDrawer,
+  planDrawer,
+  playPage,
+  restartDialog,
+  rulesDrawer,
+  timebar,
+  visibleCount,
+} from "./ui/play.js";
+import { app, current, finished, startYear, waiting } from "./ui/state.js";
 const root = document.querySelector<HTMLDivElement>("#app");
-if (!root) throw new Error("Missing app");
-const t = (zh: string, en: string) => (locale === "zh" ? zh : en);
-const pair = (v: readonly [string, string]) => v[locale === "zh" ? 0 : 1];
-const money = (n: number) =>
-  `${n < 0 ? "−" : ""}¥${(Math.abs(n) / 100).toLocaleString(locale === "zh" ? "zh-CN" : "en-US", { maximumFractionDigits: 0 })}`;
-const seed = () => crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase();
-const button = (id: string, label: string, cls = "") =>
-  `<button type="button" id="${id}" class="${cls}">${label}</button>`;
-const option = (value: string, label: string, current: string) =>
-  `<option value="${e(value)}"${value === current ? " selected" : ""}>${e(label)}</option>`;
-const state = (): State =>
-  run?.changed.at(-1)?.state ?? run?.initial ?? initialState(sampleCard(0, locale), "home");
-const shownState = (): State => run?.changed[selected - 1]?.state ?? state();
-const nextOffset = () => run?.changed.length ?? 0;
-const pending = () => !!run && decisionYears.includes(nextOffset()) && !config?.decisions[nextOffset()];
-const yearTimer = createYearTimer(
-  () => page === "play" && playing && !document.hidden && !pending() && nextOffset() < YEARS,
-  () => {
-    try {
-      advance();
-    } catch (reason) {
-      report(reason);
-    }
-  },
+if (!root) throw new Error("Missing #app");
+setLocale(navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
+const newSeed = () => crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase();
+let sampleIndex = crypto.getRandomValues(new Uint32Array(1))[0] % 3;
+/** Name of the life being played, for the shelf on the replay page. */
+let label: Text = lineLabel("original");
+/** Options of the past choice selected on the replay page, worked out once per selection. */
+let replay: { key: string; pending: Pending; options: Option[] } | null = null;
+const attributions = new WeakMap<Run, Attribution[]>();
+let peersKey = "";
+/** Peers live in the player's world but never depend on the player's picks or plans. */
+function updatePeers(config: Config) {
+  const key = JSON.stringify([config.worldSeed, config.lifeSeed, config.mode, config.year, config.years, config.card.age]);
+  if (key === peersKey) return;
+  peersKey = key;
+  app.peers = simulatePeers(config, locale());
+}
+const clock = createYearClock(
+  () =>
+    app.page === "play" &&
+    app.playing &&
+    !app.atEnd &&
+    app.review === null &&
+    app.drawer === null &&
+    app.dialog === null &&
+    !document.hidden &&
+    current() !== null,
+  tick,
+  yearEnd,
 );
-function header() {
-  return `<header>${button("home", `<span class="brand-icon">开</span><span>开图 <b>KAITU</b></span>`, "brand")}<div class="header-right"><span class="edition">${t("人生往后推 · 原型", "THE NEXT CHAPTER · PROTOTYPE")}</span>${button("language", locale === "zh" ? "EN" : "中文", "quiet")}${page === "play" ? `<details id="game-menu" class="game-menu"><summary aria-label="${t("更多操作", "More actions")}">···</summary><div>${button("restart", t("重玩同一开局", "Replay this start"), "text-button")}</div></details>` : ""}</div></header>`;
-}
-function home() {
-  return `<main class="welcome"><section class="intro"><div class="eyebrow">${t("下一页，怎么过", "HOW WILL THE NEXT CHAPTER GO")}</div><h1>${t("把人生往后推。<br>这次，你来选。", "A life ahead.<br>Your turn to choose.")}</h1><div class="entry-actions">${button("random", t("随机人生 ↗", "A random life ↗"), "entry primary")}${button("personal", t("用我的资料 ↗", "Use my profile ↗"), "entry")}</div><div class="welcome-bottom"><span>${t("免登录 · 免安装", "No login · No installation")}</span>${button("load", t("载入这局人生", "Load a saved life"), "text-button")}<input id="load-file" type="file" accept=".json,application/json" hidden></div></section><section class="home-scene">${sceneSvg(initialState(sampleCard(0, locale), "home"), locale)}</section></main>`;
-}
-function importPage() {
-  return `<main class="import-page"><h1>${t("从你开始。", "Begin with you.")}</h1><div class="import-grid"><section class="panel"><h2>ChatGPT / Claude / Gemini</h2>${button("copy-prompt", t("复制角色卡提示词", "Copy character prompt"), "primary")}<details><summary>${t("查看提示词", "View prompt")}</summary><textarea id="prompt" readonly>${e(cardPrompt(locale))}</textarea></details></section><section class="panel"><label for="paste">${t("粘贴角色卡 JSON", "Paste character JSON")}</label><textarea id="paste">${e(pasted)}</textarea>${button("parse", t("检查角色卡 →", "Review character →"), "primary")}${button("manual", t("自己填写", "Fill in myself"), "text-button")}</section></div></main>`;
-}
-function reviewPage() {
-  const bg = card.background ?? {
-    education: "",
-    major: "",
-    industry: "",
-    occupation: "",
-    experienceYears: null,
-    source: "",
-  };
-  const start = startingSettings(card);
-  const field = (name: string, label: string, value: string, max = 100) =>
-    `<label>${label}<input name="${name}" value="${e(value)}" maxlength="${max}"></label>`;
-  const select = (name: string, label: string, options: Record<string, [string, string]>, value: string) =>
-    `<label>${label}<select name="${name}">${Object.entries(options)
-      .map(([k, v]) => option(k, pair(v), value))
-      .join("")}</select></label>`;
-  return `<main class="review-page"><h1>${t("带上现在的你。", "Bring who you are today.")}</h1><form id="review-form"><section class="panel"><h2>${t("个人资料", "Personal background")}</h2><div class="field-row">${field("name", t("昵称", "Alias"), card.name, 24)}<label>${t("年龄", "Age")}<input name="age" type="number" min="18" max="90" required value="${card.age ?? ""}"></label>${select("role", t("就业状态", "Employment status"), roleLabels, card.role)}</div><div class="field-row">${field("bg-education", t("已完成学历层次", "Completed qualification"), bg.education, 80)}${field("bg-major", t("具体所学专业", "Field of study"), bg.major)}</div><div class="field-row">${field("bg-industry", t("行业", "Industry"), bg.industry)}${field("bg-occupation", t("具体岗位", "Occupation"), bg.occupation)}<label>${t("实际工作年数", "Known work experience")}<input name="experience" type="number" min="0" max="76" placeholder="${t("未知", "Unknown")}" value="${bg.experienceYears ?? ""}"></label></div>${field("background-source", t("资料依据 / 无法读取项", "Evidence / inaccessible items"), bg.source, 500)}${field("project", t("你想做的一件事", "Something you want to do"), card.project, 80)}<h2>${t("游戏状态", "Game stats")}</h2><div class="attributes">${dimensions.map((k) => `<div class="attribute-row"><label for="${k}">${pair(labels[k])}</label><input id="${k}" name="${k}" type="number" min="0" max="100" placeholder="${t("未知", "Unknown")}" value="${card.attributes[k].value ?? ""}"><input name="source-${k}" value="${e(card.attributes[k].source)}" maxlength="160" aria-label="${pair(labels[k])} ${t("依据", "source")}" placeholder="${t("来源 / 游戏设定", "Source / game setting")}"></div>`).join("")}</div><details open><summary>${t("模拟开局设定", "Simulation starting settings")}</summary><div class="field-row">${select("game-role", t("游戏就业状态", "Game employment"), Object.fromEntries(Object.entries(roleLabels).filter(([k]) => k !== "unknown")), start.role)}<label>${t("游戏工龄", "Game experience")}<input name="game-experience" type="number" min="0" max="76" required value="${start.experienceYears}"></label></div><div class="field-row"><label>${t("模拟现金 · RMB", "Simulated cash · RMB")}<input name="game-cash" type="number" min="0" max="1000000000" required value="${start.cash}"></label><label>${t("模拟存款 · RMB", "Simulated deposits · RMB")}<input name="game-deposits" type="number" min="0" max="1000000000" required value="${start.deposits}"></label></div><div class="field-row">${select("education", t("学历规则标签", "Education rule tag"), educationLabels, card.education)}${select("specialty", t("专业规则标签", "Field rule tag"), specialtyLabels, card.specialty)}</div></details><div class="form-actions">${button("edit-paste", t("返回原文", "Back to pasted text"), "text-button")}<button class="primary" type="submit">${t("开始这局人生 →", "Start this life →")}</button></div></section></form></main>`;
-}
-function readReview(form: HTMLFormElement) {
-  const d = new FormData(form);
-  const num = (name: string) => (d.get(name) === "" ? null : Number(d.get(name)));
-  return parseCard(
-    JSON.stringify({
-      ...card,
-      name: d.get("name"),
-      age: num("age"),
-      role: d.get("role"),
-      education: d.get("education"),
-      specialty: d.get("specialty"),
-      project: d.get("project"),
-      background: {
-        education: d.get("bg-education"),
-        major: d.get("bg-major"),
-        industry: d.get("bg-industry"),
-        occupation: d.get("bg-occupation"),
-        experienceYears: num("experience"),
-        source: d.get("background-source"),
-      },
-      starting: {
-        role: d.get("game-role"),
-        experienceYears: num("game-experience"),
-        cash: num("game-cash"),
-        deposits: num("game-deposits"),
-      },
-      attributes: Object.fromEntries(
-        dimensions.map((k) => [k, { value: num(k), source: d.get(`source-${k}`) }]),
-      ),
-    }),
-  );
-}
-function identity(s: State) {
-  return `<aside class="identity panel"><div class="portrait" aria-hidden="true">${e(card.name.slice(0, 1) || "·")}</div><h2>${e(card.name || t("玩家", "Player"))}</h2><div class="identity-age">${s.age} ${t("岁", "years")}</div><div class="tag">${pair(roleLabels[s.role])}${s.abroad ? ` · ${t("海外", "Abroad")}` : ""}</div><div class="stat-list">${dimensions.map((k) => `<div><span>${pair(labels[k])}</span><b>${s.props[k]}</b><progress max="100" value="${s.props[k]}" aria-label="${pair(labels[k])}"></progress></div>`).join("")}</div><div class="networth"><span>${t("模拟净资产", "Simulated net assets")}</span><strong>${money(netWorth(s.assets))}</strong></div><details><summary>${t("开局资料", "Starting profile")}</summary><p>${e([card.background?.education, card.background?.major, card.background?.industry, card.background?.occupation].filter(Boolean).join(" · "))}</p><p>${t("原始就业状态", "Original employment")}: ${pair(roleLabels[card.role])} · ${t("实际工龄", "Known experience")}: ${card.background?.experienceYears ?? t("未知", "Unknown")}</p>${dimensions.map((k) => `<p>${pair(labels[k])}：${card.attributes[k].value ?? t("未知", "Unknown")} ${e(card.attributes[k].source)}</p>`).join("")}</details></aside>`;
-}
-function story(st: Story) {
-  return `<article class="event ${st.kind}"><span class="event-dot"></span><p>${e(pair(st.text))}</p>${st.support ? `<div class="support">${st.support.map((s) => `<a href="${e(s.url)}" target="_blank" rel="noreferrer">${e(s.label)} ↗</a>`).join(" · ")}</div>` : ""}</article>`;
-}
-function controls() {
-  const finished = nextOffset() >= YEARS;
-  const current = run?.changed.at(-1);
-  return `<div class="timebar"><div class="time-heading"><strong>${current?.year ?? config?.year} <small>· ${state().age} ${t("岁", "years")}</small></strong><span class="play-status">${finished ? t("本局回顾", "Life review") : pending() ? t("等待抉择", "Awaiting your choice") : playing ? t("时间流动中", "Time is running") : t("已暂停", "Paused")}</span></div><div class="playback-toolbar">${button("pause", playing ? t("暂停", "Pause") : t("继续", "Continue"), "primary")}<div class="speed-group">${[1, 2, 4].map((n) => `<button type="button" data-speed="${n}" aria-pressed="${speed === n}">${n}×</button>`).join("")}</div><span class="year-duration">${t("约", "About")} ${yearDuration(speed) / 1000} ${t("秒 / 年", "sec / year")}</span>${button("skip", t("到下个抉择 ↠", "Next choice ↠"), "quiet")}</div></div>`;
-}
-function focusPanel() {
-  if (nextOffset() >= YEARS) return "";
-  return `<section class="focus-panel panel"><div class="section-heading"><h2>${t("下一年重心", "Next year’s focus")}</h2><span>${(config?.year ?? 2026) + nextOffset()}</span></div><div class="focus-row">${Object.entries(
-    focusLabels,
-  )
-    .map(
-      ([k, v]) =>
-        `<button type="button" data-focus="${k}" aria-pressed="${(config?.plans[nextOffset()]?.focus ?? state().focus) === k}">${pair(v)}</button>`,
-    )
-    .join("")}</div></section>`;
-}
-function decisionArea() {
-  if (!pending()) return "";
-  if (choiceCollapsed)
-    return `<section class="decision-waiting"><b>${t("抉择待定 · 时间暂停", "Decision pending · Time paused")}</b>${button("choice-expand", t("展开抉择", "Show choices"))}</section>`;
-  return `<div class="decision-area">${button("choice-collapse", t("收起抉择", "Collapse choices"), "text-button")}${choicePanel()}</div>`;
-}
-function choicePanel() {
-  if (!pending()) return "";
-  const s = state();
-  const k = subchoice;
-  if (k === "business") {
-    const cost = yuan(
-      42000 * (1 + marketFor(config?.worldSeed ?? "", (config?.year ?? 2026) + nextOffset()).demand),
-    );
-    return `<section class="decision-panel"><div class="eyebrow">${t("创业 · 启动资金", "BUSINESS · FUNDING")}</div><h2>${t("先开起来，钱怎么来？", "How will you fund the start?")}</h2><div class="decision-options"><button data-funding="self" ${liquid(s.assets) < cost + yuan(12000) ? "disabled" : ""}>${t("自筹", "Self-fund")} · ${money(cost)}<small>${t("保留 ¥12,000 缓冲", "Keep ¥12,000 reserve")}</small></button><button data-funding="loan">${t("借款 ¥60,000", "Borrow ¥60,000")}<small>${t("模拟年利率 6.5%", "Simulated annual interest 6.5%")}</small></button></div>${button("choice-back", t("返回", "Back"), "text-button")}</section>`;
-  }
-  if (k === "invest")
-    return `<section class="decision-panel"><h2>${t("这笔钱放在哪里？", "Where will this money go?")}</h2><div class="decision-options"><button data-investment="bonds">${t("债券基金", "Bond fund")}</button><button data-investment="index">${t("股票指数", "Stock index")}</button><button data-investment="property" ${liquid(s.assets) < yuan(262000) ? "disabled" : ""}>${t("房产", "Property")}<small>¥250,000 + ¥12,000 ${t("缓冲", "reserve")}</small></button></div>${button("choice-back", t("返回", "Back"), "text-button")}</section>`;
-  if (k === "custom")
-    return `<section class="decision-panel"><h2>${e(card.project || t("你想做的一件事", "Something you want to do"))}</h2><div class="decision-options">${[
-      ["creative", t("创作 / 做作品", "Create something")],
-      ["learning", t("学一项技能", "Learn a skill")],
-      ["community", t("组织 / 连接他人", "Bring people together")],
-    ]
-      .map(([v, label]) => `<button data-custom="${v}">${label}</button>`)
-      .join(
-        "",
-      )}</div><div class="tag">${t("选择对应事件路线 · 无在线模型", "Choose an event route · No online model")}</div>${button("choice-back", t("返回", "Back"), "text-button")}</section>`;
-  const costs: Record<DecisionKind, string> = {
-    career: t("求职 ¥4,500 · 可能待业", "Search ¥4,500 · Job-gap risk"),
-    business: t("客户、回款与融资", "Customers, cash flow, financing"),
-    abroad: t("搬迁最高 ¥48,000", "Relocation up to ¥48,000"),
-    invest: t("流动资金的 40% · 有涨有跌", "40% of available cash · Gains or losses"),
-    study: t("学费 ¥28,000 · 暂停全职", "Tuition ¥28,000 · Leave full-time work"),
-    stay: t("维持安排 · 风险仍在", "Keep routines · Risks remain"),
-    custom: t("试作 ¥4,500", "An experiment · ¥4,500"),
-  };
-  return `<section class="decision-panel"><div class="eyebrow">${t("人生抉择", "A LIFE DECISION")} / ${s.age} → ${s.age + 1}</div><h2>${t("这一段，往哪里走？", "Where next?")}</h2><div class="decision-options">${Object.entries(
-    decisionLabels,
-  )
-    .map(([key, label]) => {
-      const blocked = eligibility(s, key as DecisionKind);
-      return `<button type="button" data-decision="${key}"${blocked ? " disabled" : ""}>${pair(label)}<small>${blocked ? pair(blocked) : costs[key as DecisionKind]}</small></button>`;
-    })
-    .join("")}</div></section>`;
-}
-const entryLabels: Record<string, [string, string]> = {
-  salary: ["工资 / 生活收入", "Earned income"],
-  "business-income": ["经营收入", "Business income"],
-  "extra-income": ["额外收入", "Extra income"],
-  "tax-social": ["税与社保", "Tax & social"],
-  living: ["生活支出", "Living"],
-  interest: ["利息", "Interest"],
-  principal: ["归还本金（转账）", "Principal (transfer)"],
-  children: ["养育", "Children"],
-  "partner-support": ["伴侣支持", "Partner support"],
-  "investment-fees": ["投资费用", "Investment fees"],
-  unexpected: ["意外支出", "Unexpected costs"],
-  stocks: ["股票盈亏", "Stock return"],
-  bonds: ["债券盈亏", "Bond return"],
-  deposits: ["存款利息", "Deposit return"],
-  property: ["房产涨跌", "Property return"],
-  startup: ["创业启动", "Startup"],
-  "business-closure": ["停业损失", "Closure"],
-  tuition: ["学费", "Tuition"],
-  relocation: ["搬迁", "Relocation"],
-  moving: ["搬家", "Moving"],
-  "fraud-loss": ["诈骗损失", "Fraud loss"],
-  "career-cost": ["转职成本", "Career cost"],
-  "custom-project": ["自定义试作", "Custom experiment"],
-  training: ["职训", "Training"],
-  "job-search": ["定期求职", "Job search"],
-  rest: ["休整", "Rest"],
-  "sale-fees": ["出售费用", "Sale fees"],
-};
-function habitsPanel(s: State) {
-  if (nextOffset() >= YEARS) return "";
-  return `<section class="habits panel"><details id="habits-panel"><summary>${t("长期习惯", "Long-term habits")}</summary><label class="check"><input id="habit-job" type="checkbox" ${(config?.plans[nextOffset()]?.habits ?? state().habits).jobSearch ? "checked" : ""}>${t("每两年找一次转职", "Job search every two years")}</label><label class="check"><input id="habit-training" type="checkbox" ${(config?.plans[nextOffset()]?.habits ?? state().habits).training ? "checked" : ""}>${t("每两年一次职训", "Training every two years")}</label><label>${t("每月定投 · RMB", "Monthly investment · RMB")}<select id="habit-invest">${[0, 500, 1000, 2000].map((n) => option(String(n), money(yuan(n)), String((config?.plans[nextOffset()]?.habits ?? state().habits).monthlyInvestment / 100))).join("")}</select></label>${s.habitsPending.length ? `<div class="tag">${t("等待资金或身份条件", "Waiting for funds or role")}: ${s.habitsPending.map((k) => (k === "training" ? t("职训", "Training") : k === "investment" ? t("定投", "Investment") : t("转职", "Search"))).join("、")}</div>` : ""}</details></section>`;
-}
-function householdPanel(s: State) {
-  return `<section class="household-panel panel"><h2>${t("模拟生活", "Life in this game")}</h2><div class="household"><span>${t({ rent: "租住", shared: "合租", owned: "自有住房", temporary: "临时住宿" }[s.housing], s.housing)}</span><span>${pair(roleLabels[s.role])}</span>${s.abroad ? `<span>${t("海外生活", "Living abroad")}</span>` : ""}${s.family.partner ? `<span>${t("伴侣", "Partner")}</span>` : ""}${s.family.children ? `<span>${t("孩子", "Children")} × ${s.family.children}</span>` : ""}${s.family.pet ? `<span>${t("宠物", "Pet")}</span>` : ""}</div></section>`;
-}
-function ledgerPanel(s: State) {
-  const row = run?.changed[selected - 1];
-  const groups = new Map<string, number>();
-  for (const en of row?.journal.entries ?? []) {
-    if (en.kind === "transfer") continue;
-    groups.set(en.label, (groups.get(en.label) ?? 0) + (en.kind === "expense" ? -en.amount : en.amount));
-  }
-  const gross =
-    row?.journal.entries.filter((e) => e.kind === "income").reduce((n, e) => n + e.amount, 0) ?? 0;
-  const costs =
-    row?.journal.entries.filter((e) => e.kind === "expense").reduce((n, e) => n + e.amount, 0) ?? 0;
-  const tax =
-    row?.journal.entries.filter((e) => e.label === "tax-social").reduce((n, e) => n + e.amount, 0) ?? 0;
-  const living =
-    row?.journal.entries
-      .filter((e) => e.label === "living" || e.label === "children")
-      .reduce((n, e) => n + e.amount, 0) ?? 0;
-  const ratios = gross
-    ? ([
-        ["税社保", "Tax & social", tax],
-        ["生活", "Living", living],
-        ["其他开支", "Other costs", costs - tax - living],
-        ["结余", "Saved income", gross - costs],
-      ] as const)
-    : [];
-  const balances: [string, string][] = [
-    ["cash", t("现金", "Cash")],
-    ["deposits", t("存款", "Deposits")],
-    ["bonds", t("债券", "Bonds")],
-    ["stocks", t("股票", "Stocks")],
-    ["property", t("房产", "Property")],
-    ["debt", t("负债", "Debt")],
-  ];
-  const balanceRow = ([key, label]: [string, string]) =>
-    `<div><dt>${label}</dt><dd>${money(s.assets[key as keyof Omit<State["assets"], "interestRate">])}</dd></div>`;
-  const zero = balances.filter(([key]) => s.assets[key as keyof Omit<State["assets"], "interestRate">] === 0);
-  return `<section class="finances panel"><div class="section-heading"><h2>${t("资产与收支", "Money")}</h2><span class="tag">${t("模拟 RMB", "SIM RMB")}</span></div><div class="money-total"><span>${t("净资产", "Net assets")}</span><strong>${money(netWorth(s.assets))}</strong></div><dl class="balance">${balances
-    .filter(([key]) => s.assets[key as keyof Omit<State["assets"], "interestRate">] !== 0)
-    .map(balanceRow)
-    .join(
-      "",
-    )}${s.assets.debt ? `<div><dt>${t("借款利率", "Debt rate")}</dt><dd>${(s.assets.interestRate * 100).toFixed(1)}%</dd></div>` : ""}</dl>${zero.length ? `<details id="zero-balances"><summary>${t("零余额账户", "Zero balances")} · ${zero.length}</summary><dl>${zero.map(balanceRow).join("")}</dl></details>` : ""}<h3>${row?.year ?? config?.year} · ${t("年度收支", "Annual cash flow")}</h3><dl class="annual-summary"><div><dt>${t("收入", "Income")}</dt><dd>${money(gross)}</dd></div><div><dt>${t("支出", "Expenses")}</dt><dd>${money(costs)}</dd></div><div><dt>${t("净资产变化", "Net change")}</dt><dd>${row ? money(row.journal.closing - row.journal.opening) : "—"}</dd></div></dl><details id="journal-panel"><summary>${t("年度明细", "Annual breakdown")}</summary><dl class="journal">${[
-    ...groups,
-  ]
-    .filter(([, v]) => v !== 0)
-    .map(
-      ([k, v]) =>
-        `<div><dt>${entryLabels[k] ? pair(entryLabels[k]) : e(k)}</dt><dd>${v > 0 ? "+" : ""}${money(v)}</dd></div>`,
-    )
-    .join(
-      "",
-    )}</dl>${row?.journal.principalPaid ? `<div class="principal-note">${t("归还本金 · 转账", "Principal · transfer")}: ${money(row.journal.principalPaid)}</div>` : ""}</details><details id="allocation-panel"><summary>${t("收入去向 · 估算", "Income allocation · estimate")}</summary><dl>${ratios.map(([zh, en, value]) => `<div><dt>${t(zh, en)}</dt><dd>${Math.round((value / gross) * 100)}%</dd></div>`).join("")}</dl></details></section>`;
-}
-function conclusion() {
-  if (nextOffset() < YEARS || !run) return "";
-  const a = run.baseline.at(-1)?.state;
-  const b = state();
-  return `<section class="ending-card"><div class="eyebrow">${t("十二年之后", "TWELVE YEARS LATER")}</div><h2>${t("你走过的路，留下了这些变化。", "These choices left their marks.")}</h2><table><thead><tr><th></th><th>${t("照现在过", "As things are")}</th><th>${t("你的选择", "Your choices")}</th></tr></thead><tbody><tr><td>${t("模拟净资产", "Simulated net assets")}</td><td>${money(a ? netWorth(a.assets) : 0)}</td><td>${money(netWorth(b.assets))}</td></tr>${dimensions.map((k) => `<tr><td>${pair(labels[k])}</td><td>${a?.props[k]}</td><td>${b.props[k]}</td></tr>`).join("")}</tbody></table><div class="ending-actions">${button("again", t("再来一局 ↗", "Another life ↗"), "primary")}${button("save", t("导出这局人生 JSON", "Export this life JSON"))}${button("png", t("导出对照卡 PNG", "Export comparison PNG"))}</div></section>`;
-}
-function playPage() {
-  if (!run || !config) return "";
-  const s = shownState();
-  const row = run.changed[selected - 1];
-  return `${controls()}<main class="game-shell">${identity(s)}<section class="game-main"><div class="scene-top"><span>${row?.year ?? config.year} · ${s.age} ${t("岁", "years")}</span><span>${row?.market.crisis ? t("市场冲击", "Market shock") : t("日子继续", "Life goes on")} · ${t("指数", "Index")} ${((row?.market.returns.stocks ?? 0) * 100).toFixed(1)}%</span></div><div class="life-scene">${sceneSvg(s, locale, true)}</div>${focusPanel()}${decisionArea()}<section class="events-feed panel" aria-label="${t("年度事件", "Annual events")}"><div class="section-heading"><h2>${t("人生记录", "Life journal")}</h2><span>${row?.year} · ${s.age} ${t("岁", "years")}</span></div><nav class="year-nav" aria-label="${t("年份回顾", "Year review")}">${run.changed.map((r, i) => `<button type="button" data-year="${i + 1}" aria-current="${selected === i + 1 ? "true" : "false"}">${r.age}${r.decision ? " ◆" : ""}</button>`).join("")}</nav>${row?.stories.map(story).join("") ?? ""}${selected < nextOffset() ? button("latest", t("回到现在", "Back to now"), "text-button") : ""}</section>${conclusion()}<details id="route-panel" class="route-review"><summary>${t("双线回顾", "Two paths")} · ${t("同一个世界", "One shared world")}</summary>${mapSvg(run, selected, locale)}<div class="baseline-story">${run.baseline[selected - 1]?.stories.map(story).join("") ?? ""}</div></details><details id="rules-panel" class="rules"><summary>${t("规则、参数与来源", "Rules, parameters & sources")}</summary><p>${t("人民币为游戏金额；初始资产采用可修改的模拟设定。四属性未知用中性 50，原卡仍保留未知。行情均值、波动、税社保和事件概率是作者设定，不是个人预测。", "RMB amounts and editable starting balances are simulated. Unknown stats use neutral 50; the source card retains unknown. Return means, volatility, tax/social rates and event odds are authored game assumptions, not personal predictions.")}</p><p>${t("一般知识对投资行为只有弱关联；性格随机项独立。知识不改变市场回报。定投按每月末结算，年内用平滑路径复合到同一年度行情。", "General knowledge has a weak game association with investment behavior; temperament is independent. Knowledge never changes market returns. Recurring investments settle at each month-end on a smooth path compounding to the shared annual return.")}</p><ul>${(["deposits", "bonds", "stocks", "property"] as const).map((k) => `<li>${pair(entryLabels[k])}: μ ${(marketConfig[k].mean * 100).toFixed(1)}%, σ ${(marketConfig[k].volatility * 100).toFixed(1)}% · <a href="${marketConfig[k].reference}" target="_blank" rel="noreferrer">${t("机制参考", "Mechanism reference")}</a></li>`).join("")}</ul><code>${e(config.worldSeed)} / ${e(config.lifeSeed)}</code></details></section><aside class="life-sidebar">${householdPanel(s)}${ledgerPanel(s)}${habitsPanel(state())}</aside></main>`;
-}
-function restartDialog() {
-  return `<dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">${t("重新开始这一局？", "Restart this life?")}</h2><p>${t("当前进度会被替换。", "This will replace your current progress.")}</p><div class="dialog-actions">${button("restart-cancel", t("取消", "Cancel"), "primary")}${button("restart-confirm", t("确认重玩", "Restart"))}</div></dialog>`;
-}
-function requestRestart() {
-  if (!config) return;
-  if (nextOffset() >= YEARS) {
-    begin({ ...structuredClone(config), decisions: {}, plans: {} });
-    return;
-  }
-  restartWasPlaying = playing;
-  playing = false;
-  render();
-}
-function cancelRestart() {
-  if (restartWasPlaying === null) return;
-  playing = restartWasPlaying && !document.hidden;
-  restartWasPlaying = null;
-  render();
+/** "中文 / English" messages from the model layer, in the current language. */
+function bilingual(message: string) {
+  const [zh, en] = message.split(" / ");
+  return locale() === "zh" || !en ? zh : en;
 }
 function report(reason: unknown) {
-  playing = false;
-  error = reason instanceof Error ? reason.message : String(reason);
+  app.playing = false;
+  app.error = bilingual(reason instanceof Error ? reason.message : String(reason));
   render();
 }
-function click(id: string, fn: () => void | Promise<void>) {
-  document.getElementById(id)?.addEventListener("click", () => {
-    Promise.resolve().then(fn).catch(report);
-  });
-}
-function onAll(selector: string, fn: (el: HTMLElement) => void) {
-  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
-    el.addEventListener("click", () => {
-      try {
-        fn(el);
-      } catch (reason) {
-        report(reason);
-      }
-    });
-  }
-}
-function begin(c?: Config) {
-  yearTimer.stop();
-  restartWasPlaying = null;
-  config = c ?? {
-    card: structuredClone(card),
-    worldSeed: seed(),
-    lifeSeed: seed(),
-    year: new Date().getUTCFullYear(),
-    decisions: {},
-    plans: {},
-  };
-  card = config.card;
-  run = { config, initial: initialState(card, config.lifeSeed), baseline: [], changed: [] };
-  page = "play";
-  playing = true;
-  error = "";
-  subchoice = null;
-  choiceCollapsed = false;
-  advance();
-  window.scrollTo(0, 0);
-}
-function randomStart() {
-  performance.mark("kaitu:random-input");
-  card = sampleCard(sampleIndex++, locale);
-  begin();
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      performance.measure("kaitu:random-to-paint", "kaitu:random-input");
-    }),
-  );
-}
-function advance(renderNow = true) {
-  if (!run || !config) return;
-  if (pending() || nextOffset() >= YEARS) {
-    playing = false;
-    if (renderNow) render();
-    return;
-  }
-  const i = nextOffset();
-  const b = step(run.baseline.at(-1)?.state ?? run.initial, config, i, true);
-  const c = step(state(), config, i);
-  run.baseline.push(b);
-  run.changed.push(c);
-  selected = nextOffset();
-  if (pending() || nextOffset() >= YEARS) playing = false;
-  if (renderNow) render();
-}
-function decide(d: Decision) {
-  if (!config || !pending()) return;
-  performance.mark("kaitu:decision-input");
-  const i = nextOffset();
-  config.decisions[i] = d;
-  subchoice = null;
-  choiceCollapsed = false;
-  playing = true;
+function guard(fn: () => void | Promise<void>) {
   try {
-    advance();
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        performance.measure("kaitu:decision-to-paint", "kaitu:decision-input");
-      }),
-    );
+    const result = fn();
+    if (result instanceof Promise) result.catch(report);
   } catch (reason) {
-    delete config.decisions[i];
     report(reason);
   }
 }
-function updatePlan(patch: Partial<{ focus: Focus; habits: State["habits"] }>) {
-  if (!config || nextOffset() >= YEARS) return;
-  config.plans[nextOffset()] = {
-    ...(config.plans[nextOffset()] ?? { focus: state().focus, habits: structuredClone(state().habits) }),
-    ...patch,
-  };
-  render();
-}
-function save() {
-  if (!config) return;
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify({ kind: "kaitu-simulation", version: 2, config }, null, 2)], {
-      type: "application/json",
-    }),
+const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+function measure(name: string) {
+  performance.mark(`${name}-input`);
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => performance.measure(`${name}-to-paint`, `${name}-input`)),
   );
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "kaitu-life.json";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+// ── Rendering ────────────────────────────────────────────────────────────────
+function header() {
+  return `<header class="top"><button type="button" class="brand" data-action="home" aria-label="${t("开图 · 回到开局", "Kaitu · Back to the start")}"><span class="brand-icon" aria-hidden="true">开</span><span>开图 <b>KAITU</b></span></button><span class="edition">${t("人生往后推", "The next chapter")}</span><div class="header-right">${button("language", locale() === "zh" ? "EN" : "中文", "quiet", `lang="${locale() === "zh" ? "en" : "zh"}"`)}<div class="menu-wrap">${button("menu", "···", "quiet", `aria-haspopup="menu" aria-expanded="${app.menu}" aria-label="${t("更多操作", "More actions")}"`)}${menu()}</div></div></header>`;
+}
+function banner() {
+  if (!app.error || (app.page === "play" && waiting() && !app.collapsed)) return "";
+  return `<div class="banner" role="alert"><span>${esc(app.error)}</span>${button("dismiss-error", "×", "quiet", `aria-label="${t("关闭提示", "Dismiss")}"`)}</div>`;
+}
+function attributionOf(run: Run) {
+  let list = attributions.get(run);
+  if (!list) {
+    list = attribution(run);
+    attributions.set(run, list);
+  }
+  return list;
+}
+function replayList(): ReplayOption[] {
+  const run = app.run;
+  if (!run) return [];
+  return run.changed.slice(0, app.shown).flatMap((ch) =>
+    ch.choices.map((p) => ({
+      key: p.key,
+      year: ch.year,
+      choice: p.choice,
+      current: choiceName(p),
+      taken: p.pick.option,
+      options:
+        replay?.key === p.key
+          ? replay.options.map((o) => ({ id: o.id, label: pair(o.label), blocked: !!o.blocked }))
+          : [],
+    })),
+  );
+}
+function page() {
+  if (app.page === "import") return importPage();
+  if (app.page === "review") return reviewPage();
+  if (app.page === "play" && app.run) return playPage();
+  if (app.page === "ending" && app.run) return endingPage(attributionOf(app.run));
+  if (app.page === "replay" && app.run) return replayPage(replayList());
+  return homePage();
+}
+function drawerHtml() {
+  if (app.drawer === "money" && app.run) return moneyDrawer();
+  if (app.drawer === "plan" && app.run) return planDrawer();
+  if (app.drawer === "rules") return rulesDrawer();
+  return "";
+}
+/** Bars are sized from `data-w` (0–1) through the CSSOM: the page's CSP forbids inline style attributes. */
+function applyWidths(scope: ParentNode) {
+  for (const el of scope.querySelectorAll<HTMLElement>("[data-w]"))
+    el.style.width = `${Math.max(0, Math.min(1, Number(el.dataset.w) || 0)) * 100}%`;
+}
+function focusKey() {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement) || !root?.contains(el)) return null;
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  const action = el.dataset.action;
+  if (!action) return null;
+  const attr = (name: string, value: string | undefined) =>
+    value === undefined ? "" : `[data-${name}="${CSS.escape(value)}"]`;
+  return `[data-action="${CSS.escape(action)}"]${attr("value", el.dataset.value)}${attr("key", el.dataset.key)}`;
 }
 function render() {
-  yearTimer.stop();
   if (!root) return;
-  const openPanels = [...document.querySelectorAll<HTMLDetailsElement>("details[id][open]")].map(
-    (el) => el.id,
-  );
-  document.body.classList.toggle("playing-game", page === "play");
-  document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
-  root.innerHTML = `${
-    header() +
-    (error ? `<div class="error" role="alert">${e(error)}</div>` : "") +
-    (page === "home"
-      ? home()
-      : page === "import"
-        ? importPage()
-        : page === "review"
-          ? reviewPage()
-          : playPage())
-  }${page === "play" ? restartDialog() : ""}<footer><span>KAITU · ${t("推演", "SIMULATION")}</span><a href="./vendor/remake/LICENSE" target="_blank" rel="noreferrer">Remake · MIT</a></footer>`;
-  for (const id of openPanels) {
-    const panel = document.getElementById(id);
-    if (panel instanceof HTMLDetailsElement) panel.open = true;
+  const focus = focusKey();
+  const open = [...root.querySelectorAll<HTMLDetailsElement>("details[id]")].filter((d) => d.open).map((d) => d.id);
+  document.documentElement.lang = locale() === "zh" ? "zh-CN" : "en";
+  document.body.dataset.page = app.page;
+  document.title = t("人生往后推 · 开图", "The next chapter · Kaitu");
+  root.innerHTML = `${header()}${app.page === "play" ? timebar() : ""}${banner()}${page()}${drawerHtml()}${app.dialog === "restart" ? restartDialog() : ""}<footer><span>KAITU · ${t("推演，不是预测", "A simulation, not a prediction")}</span><a href="./vendor/remake/LICENSE" target="_blank" rel="noreferrer">Remake · MIT</a></footer>`;
+  for (const id of open) {
+    const details = document.getElementById(id);
+    if (details instanceof HTMLDetailsElement) details.open = true;
   }
-  click("home", () => {
-    playing = false;
-    page = "home";
-    error = "";
-    render();
-  });
-  click("language", () => {
-    const form = document.getElementById("review-form");
-    if (form instanceof HTMLFormElement) card = readReview(form);
-    pasted = document.querySelector<HTMLTextAreaElement>("#paste")?.value ?? pasted;
-    locale = locale === "zh" ? "en" : "zh";
-    render();
-  });
-  click("random", randomStart);
-  click("again", randomStart);
-  click("personal", () => {
-    page = "import";
-    error = "";
-    render();
-  });
-  click("manual", () => {
-    pasted = document.querySelector<HTMLTextAreaElement>("#paste")?.value ?? pasted;
-    card = blankCard();
-    error = "";
-    page = "review";
-    render();
-  });
-  click("edit-paste", () => {
-    page = "import";
-    error = "";
-    render();
-  });
-  click("copy-prompt", async () => {
-    await navigator.clipboard.writeText(cardPrompt(locale));
-    const b = document.getElementById("copy-prompt");
-    if (b) b.textContent = t("已复制", "Copied");
-  });
-  click("parse", () => {
-    pasted = document.querySelector<HTMLTextAreaElement>("#paste")?.value ?? pasted;
-    card = parseCard(pasted);
-    page = "review";
-    error = "";
-    render();
-  });
-  document.getElementById("review-form")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    try {
-      card = readReview(event.target as HTMLFormElement);
-      begin();
-    } catch (reason) {
-      report(reason);
-    }
-  });
-  for (const [fact, game] of [
-    ["role", "game-role"],
-    ["experience", "game-experience"],
-  ]) {
-    const source = document.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${fact}"]`);
-    const target = document.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${game}"]`);
-    target?.addEventListener("change", () => {
-      target.dataset.edited = "true";
-    });
-    source?.addEventListener("change", () => {
-      if (target && !target.dataset.edited && source.value && source.value !== "unknown")
-        target.value = source.value;
-    });
-  }
-  for (const id of ["pause", "skip"]) {
-    const control = document.getElementById(id);
-    if (control instanceof HTMLButtonElement) control.disabled = pending() || nextOffset() >= YEARS;
-  }
-  click("pause", () => {
-    if (pending() || nextOffset() >= YEARS) return;
-    playing = !playing;
-    selected = nextOffset();
-    render();
-  });
-  click("skip", () => {
-    playing = false;
-    while (!pending() && nextOffset() < YEARS) advance(false);
-    render();
-  });
-  click("restart", requestRestart);
-  click("restart-cancel", cancelRestart);
-  click("restart-confirm", () => {
-    if (restartWasPlaying !== null && config) begin({ ...structuredClone(config), decisions: {}, plans: {} });
-  });
-  const restart = document.getElementById("restart-dialog");
-  if (restart instanceof HTMLDialogElement) {
-    restart.addEventListener("cancel", (event) => {
+  applyWidths(root);
+  if (focus) root.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
+  const dialog = document.getElementById("restart-dialog");
+  if (dialog instanceof HTMLDialogElement && !dialog.open) {
+    dialog.addEventListener("cancel", (event) => {
       event.preventDefault();
       cancelRestart();
     });
-    if (restartWasPlaying !== null) {
-      restart.showModal();
-      document.getElementById("restart-cancel")?.focus();
-    }
+    dialog.showModal();
+    dialog.querySelector<HTMLElement>("[data-action=dialog-cancel]")?.focus();
   }
-  onAll("[data-speed]", (el) => {
-    speed = Number(el.dataset.speed);
-    render();
-  });
-  onAll("[data-focus]", (el) => updatePlan({ focus: el.dataset.focus as Focus }));
-  onAll("[data-year]", (el) => {
-    selected = Number(el.dataset.year);
-    playing = false;
-    render();
-  });
-  onAll("[data-decision]", (el) => {
-    if (!pending()) return;
-    const kind = el.dataset.decision as DecisionKind;
-    if (["business", "invest", "custom"].includes(kind)) {
-      subchoice = kind;
-      render();
-    } else decide({ kind });
-  });
-  onAll("[data-funding]", (el) =>
-    decide({ kind: "business", funding: el.dataset.funding as Decision["funding"] }),
-  );
-  onAll("[data-investment]", (el) =>
-    decide({ kind: "invest", investment: el.dataset.investment as Decision["investment"] }),
-  );
-  onAll("[data-custom]", (el) => decide({ kind: "custom", custom: el.dataset.custom as Decision["custom"] }));
-  click("latest", () => {
-    selected = nextOffset();
-    render();
-  });
-  click("choice-collapse", () => {
-    choiceCollapsed = true;
-    playing = false;
-    render();
-  });
-  click("choice-expand", () => {
-    choiceCollapsed = false;
-    playing = false;
-    render();
-  });
-  click("choice-back", () => {
-    subchoice = null;
-    render();
-  });
-  for (const id of ["habit-job", "habit-training", "habit-invest"])
-    document.getElementById(id)?.addEventListener("change", () => {
-      const h = { ...(config?.plans[nextOffset()]?.habits ?? state().habits) };
-      if (id === "habit-job") h.jobSearch = (document.getElementById(id) as HTMLInputElement).checked;
-      if (id === "habit-training") h.training = (document.getElementById(id) as HTMLInputElement).checked;
-      if (id === "habit-invest")
-        h.monthlyInvestment = yuan(Number((document.getElementById(id) as HTMLSelectElement).value));
-      updatePlan({ habits: h });
-    });
-  click("save", save);
-  click("png", () => exportPng(mapSvg(run, nextOffset(), locale, true)));
-  click("load", () => document.getElementById("load-file")?.click());
-  document.getElementById("load-file")?.addEventListener("change", async (event) => {
-    try {
-      const f = (event.target as HTMLInputElement).files?.[0];
-      if (!f) return;
-      if (f.size > 100000) throw new Error("存档过长 / Save too large");
-      config = parseSave(await f.text());
-      run = simulate(config);
-      card = config.card;
-      selected = YEARS;
-      page = "play";
-      playing = false;
-      error = "";
-      render();
-    } catch (reason) {
-      report(reason);
-    }
-  });
-  // A user opening/closing details pauses the year without rerendering the disclosure.
-  // Listen to summary clicks, not toggle: default-open panels also emit toggle on render.
-  for (const summary of document.querySelectorAll(".game-shell summary")) {
-    summary.addEventListener("click", () => {
-      playing = false;
-      yearTimer.stop();
-      const pause = document.getElementById("pause");
-      if (pause) pause.textContent = t("继续", "Continue");
-      const status = document.querySelector(".play-status");
-      if (status && !pending() && nextOffset() < YEARS) status.textContent = t("已暂停", "Paused");
-    });
-  }
-  yearTimer.schedule(speed);
+  clock.sync(app.speed);
 }
+// ── The year clock ───────────────────────────────────────────────────────────
+/** Between settlements only the progress bar and the year's beats change; everything else waits for the year end. */
+function tick(progress: number) {
+  const before = app.progress;
+  app.progress = progress;
+  const ch = current();
+  if (!ch) return;
+  if (before < summaryAt && progress >= summaryAt) return render();
+  const bar = document.getElementById("year-progress");
+  if (bar) bar.style.width = `${progress * 100}%`;
+  const shown = visibleCount(ch, before);
+  if (visibleCount(ch, progress) === shown) return;
+  const list = document.getElementById("beats");
+  if (!list) return;
+  list.innerHTML = beatsHtml(ch, progress, false);
+  for (const el of [...list.children].slice(shown)) el.classList.add("fresh");
+}
+function yearEnd() {
+  const run = app.run;
+  if (!run) return;
+  if (app.shown < run.changed.length) {
+    app.shown++;
+    app.progress = 0;
+  } else {
+    app.atEnd = true;
+    app.progress = 1;
+  }
+  render();
+  if (waiting()) revealDecision();
+}
+/** Continue the year without hiding anything it has already shown. */
+function resumeClock() {
+  const ch = current();
+  const floor = !ch
+    ? 0
+    : app.progress >= summaryAt
+      ? summaryAt
+      : Math.max(0, ...ch.stories.map((st) => beatAt(st.month ?? 1)).filter((at) => at <= app.progress));
+  clock.resume(floor);
+  app.progress = clock.progress;
+}
+/** Place the playhead after the run was worked out up to year `index`: play that year, or keep waiting. */
+function enterYear(index: number) {
+  const run = app.run;
+  if (!run) return;
+  if (run.changed.length > index) {
+    app.shown = index + 1;
+    app.atEnd = false;
+    app.progress = 0;
+  } else {
+    app.shown = index;
+    app.atEnd = true;
+    app.progress = 1;
+  }
+  clock.progress = app.atEnd ? 0 : app.progress;
+}
+function revealDecision() {
+  requestAnimationFrame(() =>
+    document
+      .querySelector(".decision, .decision-bar")
+      ?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" }),
+  );
+}
+// ── Starting and leaving a life ──────────────────────────────────────────────
+function resetView() {
+  app.review = null;
+  app.drawer = null;
+  app.menu = false;
+  app.dialog = null;
+  app.wasPlaying = null;
+  app.selection = null;
+  app.collapsed = false;
+  app.error = "";
+  app.pause = null;
+  app.replayKey = null;
+  app.replayPick = null;
+  replay = null;
+}
+const newConfig = (card: Card): Config => ({
+  card: structuredClone(card),
+  worldSeed: newSeed(),
+  lifeSeed: newSeed(),
+  year: startYear(),
+  years: app.years,
+  mode: app.mode,
+  decisions: {},
+  plans: {},
+});
+/** Starts `config` from its first year; a choice due at once is shown before the clock runs. */
+function begin(config: Config, name: Text = lineLabel("original"), from = 0) {
+  clock.stop();
+  app.config = config;
+  app.card = config.card;
+  app.run = simulate(config);
+  updatePeers(config);
+  label = name;
+  resetView();
+  app.page = "play";
+  enterYear(from);
+  app.playing = true;
+  render();
+  window.scrollTo(0, 0);
+  if (waiting()) revealDecision();
+}
+function startRandom() {
+  measure("kaitu:random");
+  app.card = sampleCard(sampleIndex++, locale());
+  begin(newConfig(app.card));
+}
+function goHome() {
+  app.page = "home";
+  app.playing = false;
+  app.pause = "user";
+  app.menu = false;
+  app.drawer = null;
+  app.review = null;
+  app.dialog = null;
+  render();
+  window.scrollTo(0, 0);
+}
+function backToRun() {
+  if (!app.run) return;
+  app.page = "play";
+  app.error = "";
+  app.menu = false;
+  render();
+  window.scrollTo(0, 0);
+}
+/** Finished lives stay on the replay page's shelf for this session. */
+function remember(run: Run) {
+  if (!app.config || app.lines.some((line) => line.run === run)) return;
+  app.lines.push({ label, config: structuredClone(app.config), run });
+}
+function showEnding() {
+  const run = app.run;
+  if (!run || !app.config || run.pending || run.changed.length < app.config.years) return;
+  remember(run);
+  app.page = "ending";
+  app.playing = false;
+  app.menu = false;
+  app.drawer = null;
+  app.review = null;
+  render();
+  window.scrollTo(0, 0);
+}
+// ── Playing ──────────────────────────────────────────────────────────────────
+function togglePlay() {
+  if (app.review !== null) return backNow();
+  if (waiting() || finished()) return;
+  app.playing = !app.playing;
+  app.pause = app.playing ? null : "user";
+  if (app.playing) resumeClock();
+  render();
+}
+function setSpeed(value: number) {
+  if (value !== 1 && value !== 2 && value !== 4) return;
+  app.speed = value;
+  render();
+}
+/** Reveals every year up to the next choice, or to the end of the run. */
+function skip() {
+  const run = app.run;
+  if (!run || app.review !== null || waiting() || finished()) return;
+  app.shown = Math.max(app.shown, run.changed.length);
+  app.atEnd = true;
+  app.progress = 1;
+  clock.progress = 0;
+  render();
+  if (waiting()) revealDecision();
+}
+function review(index: number) {
+  const run = app.run;
+  if (!run || !Number.isInteger(index) || index < 0 || index >= run.changed.length || index >= app.shown) return;
+  app.review = index;
+  render();
+  document.getElementById("year-panel")?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+}
+function backNow() {
+  if (app.review === null) return;
+  app.review = null;
+  resumeClock();
+  render();
+}
+function openDrawer(kind: string) {
+  if (kind !== "money" && kind !== "plan" && kind !== "rules") return;
+  app.drawer = kind;
+  app.menu = false;
+  render();
+  // Slide in once on opening; re-renders inside the drawer (tabs, plan changes) must not replay it.
+  root?.querySelector(".sheet")?.classList.add("enter");
+  root?.querySelector<HTMLElement>("[data-action=close-drawer]")?.focus();
+}
+function closeDrawer() {
+  const was = app.drawer;
+  if (!was) return;
+  app.drawer = null;
+  if (app.playing) resumeClock();
+  render();
+  root?.querySelector<HTMLElement>(`[data-action=drawer][data-value=${was}]`)?.focus();
+}
+/** A plan always applies from the next year (from the first year while its opening choice is waiting). */
+function updatePlan(change: (plan: Plan) => void) {
+  const run = app.run;
+  const cfg = app.config;
+  if (!run || !cfg || app.review !== null) return;
+  const at = app.shown;
+  if (at >= cfg.years) return;
+  const plan = structuredClone(cfg.plans[at] ?? planOf(run.changed[at - 1]?.state ?? run.initial));
+  change(plan);
+  cfg.plans[at] = plan;
+  app.run = continueRun(run, cfg, at);
+  // The plan can make a waiting choice no longer due; the next year then simply begins.
+  if (app.atEnd && app.run.changed.length > app.shown) enterYear(app.shown);
+  render();
+}
+function planAction(key: string, value: string) {
+  updatePlan((p) => {
+    if (key === "jobSearch" || key === "training") p.habits[key] = value === "on";
+    else if (key === "exercise") p.exercise = value === "on";
+    else if (key === "monthly") p.habits.monthlyInvestment = Number(value);
+    else if (key === "crash") p.crash = value as CrashRule;
+    else if (key === "parents") p.parentsSupport = Number(value);
+    else if (key === "travel") p.travel = value as Travel;
+  });
+}
+function choose(id: string) {
+  const p = waiting();
+  if (!p) return;
+  const option = p.choice.options(p.state, p.context).find((o) => o.id === id);
+  if (!option || option.blocked) return;
+  const pick = defaultPick(p.choice, p.state, p.context, option);
+  app.selection = pick.option === id ? pick : { option: id };
+  app.error = "";
+  render();
+}
+function adjust(change: (pick: Pick) => void) {
+  if (!app.selection) return;
+  const next = structuredClone(app.selection);
+  change(next);
+  app.selection = next;
+  app.error = "";
+  render();
+}
+function commit() {
+  const run = app.run;
+  const cfg = app.config;
+  const p = waiting();
+  const pick = app.selection;
+  if (!run || !cfg || !p || !pick || app.committing) return;
+  const reason = rejectPick(p.choice, p.state, p.context, pick);
+  if (reason) {
+    app.error = bilingual(reason);
+    return render();
+  }
+  measure("kaitu:decision");
+  app.committing = true;
+  cfg.decisions[p.key] = structuredClone(pick);
+  try {
+    app.run = continueRun(run, cfg, p.offset);
+  } catch (error) {
+    delete cfg.decisions[p.key];
+    app.committing = false;
+    return report(error);
+  }
+  app.committing = false;
+  app.selection = null;
+  app.collapsed = false;
+  app.error = "";
+  enterYear(p.offset);
+  app.playing = true;
+  app.pause = null;
+  render();
+  if (waiting()) revealDecision();
+}
+function requestRestart() {
+  if (app.page !== "play" || finished()) return openReplay();
+  app.wasPlaying = app.playing;
+  app.playing = false;
+  app.menu = false;
+  app.dialog = "restart";
+  render();
+}
+function cancelRestart() {
+  if (app.dialog === null) return;
+  app.dialog = null;
+  app.playing = app.wasPlaying ?? false;
+  app.wasPlaying = null;
+  if (app.playing) resumeClock();
+  render();
+}
+// ── Replaying ────────────────────────────────────────────────────────────────
+function openReplay() {
+  if (!app.run) return;
+  app.page = "replay";
+  app.playing = false;
+  app.pause = "user";
+  app.dialog = null;
+  app.menu = false;
+  app.drawer = null;
+  app.review = null;
+  app.replayKey = null;
+  app.replayPick = null;
+  replay = null;
+  render();
+  window.scrollTo(0, 0);
+}
+/** The options of a past choice, as they stood that year: replay the log without it and stop where it is asked. */
+function selectReplay(key: string) {
+  const cfg = app.config;
+  if (!cfg) return;
+  const alt = structuredClone(cfg);
+  delete alt.decisions[key];
+  const pending = simulate(alt, { baseline: false }).pending;
+  if (!pending || pending.key !== key) return;
+  replay = { key, pending, options: pending.choice.options(pending.state, pending.context) };
+  app.replayKey = key;
+  app.replayPick = null;
+  render();
+}
+function pickReplay(id: string) {
+  if (!replay) return;
+  const { choice, state, context } = replay.pending;
+  const option = replay.options.find((o) => o.id === id);
+  if (!option || option.blocked) return;
+  const pick = defaultPick(choice, state, context, option);
+  app.replayPick = pick.option === id ? pick : null;
+  render();
+}
+const replayName = () =>
+  replay && app.replayPick
+    ? `${replay.pending.context.year} ${choiceName({ choice: replay.pending.choice.id, pick: app.replayPick })}`
+    : "";
+/** Same world, one pick changed: keep everything before it and play on from that year. */
+function replayContinue() {
+  const run = app.run;
+  const cfg = app.config;
+  const pick = app.replayPick;
+  if (!replay || !run || !cfg || !pick) return;
+  const { key, pending } = replay;
+  const keep = new Set<string>();
+  for (const ch of run.changed) {
+    if (ch.offset > pending.offset) break;
+    for (const p of ch.choices) {
+      if (p.key === key) break;
+      keep.add(p.key);
+    }
+  }
+  const next = structuredClone(cfg);
+  next.decisions = Object.fromEntries(Object.entries(cfg.decisions).filter(([k]) => keep.has(k)));
+  next.decisions[key] = pick;
+  next.plans = Object.fromEntries(Object.entries(cfg.plans).filter(([k]) => Number(k) <= pending.offset));
+  begin(next, lineLabel("changed", replayName()), pending.offset);
+}
+/** Plays `config` to the end, carrying on wherever a pick is missing or no longer possible, then shows the ending. */
+function finishWith(config: Config, name: Text) {
+  clock.stop();
+  const run = simulate(config, { policy: "stay" });
+  config.decisions = Object.fromEntries(
+    run.changed.flatMap((ch) => ch.choices.map((p) => [p.key, structuredClone(p.pick)] as const)),
+  );
+  run.config = structuredClone(config);
+  app.config = config;
+  app.run = run;
+  updatePeers(config);
+  label = name;
+  resetView();
+  app.shown = config.years;
+  app.atEnd = true;
+  app.progress = 1;
+  showEnding();
+}
+function replayEnding() {
+  const cfg = app.config;
+  if (!replay || !cfg || !app.replayPick) return;
+  const next = structuredClone(cfg);
+  next.decisions[replay.key] = app.replayPick;
+  finishWith(next, lineLabel("changed", replayName()));
+}
+/** Same choices, another world: a fresh world seed, or one that turns into the asked-for world. */
+function replayWorld(value: string) {
+  const cfg = app.config;
+  if (!cfg) return;
+  const next = structuredClone(cfg);
+  next.mode = "parallel";
+  const end = Math.max(BRANCH_YEAR, next.year + next.years - 1);
+  next.worldSeed = newSeed();
+  if (value in worlds)
+    for (let i = 0; i < 400 && worldFor("parallel", next.worldSeed, end) !== value; i++) next.worldSeed = newSeed();
+  const world: WorldId = worldFor("parallel", next.worldSeed, end);
+  finishWith(next, lineLabel("world", pair(worlds[world].name)));
+}
+function openLine(index: number) {
+  const line = app.lines[index];
+  if (!line) return;
+  app.config = structuredClone(line.config);
+  app.run = line.run;
+  updatePeers(app.config);
+  label = line.label;
+  resetView();
+  app.shown = app.config.years;
+  app.atEnd = true;
+  app.progress = 1;
+  showEnding();
+}
+function restartSame() {
+  const cfg = app.config;
+  if (!cfg) return;
+  begin({ ...structuredClone(cfg), decisions: {}, plans: {} }, ["同一开局，从头再来", "The same start, again"]);
+}
+// ── Files ────────────────────────────────────────────────────────────────────
+function download(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function save() {
+  if (!app.config) return;
+  const text = JSON.stringify({ kind: "kaitu-simulation", version: 3, config: app.config }, null, 2);
+  download(new Blob([text], { type: "application/json" }), "kaitu-life.json");
+  app.menu = false;
+  render();
+}
+async function loadSave(file: File) {
+  if (file.size > 100000) throw new Error("存档过长 / Save too large");
+  const config = parseSave(await file.text());
+  clock.stop();
+  app.config = config;
+  app.card = config.card;
+  app.run = simulate(config);
+  updatePeers(config);
+  label = lineLabel("original");
+  resetView();
+  app.page = "play";
+  app.shown = app.run.changed.length;
+  app.atEnd = true;
+  app.progress = 1;
+  app.playing = false;
+  render();
+  window.scrollTo(0, 0);
+}
+async function loadCard(file: File) {
+  if (file.size > 200000) throw new Error("文件过大 / File too large");
+  const text = await file.text();
+  app.card = parseCard(text);
+  app.pasted = text;
+  app.error = "";
+  app.page = "review";
+  render();
+  window.scrollTo(0, 0);
+}
+async function copyPrompt(el: HTMLElement) {
+  try {
+    await navigator.clipboard.writeText(cardPrompt(locale()));
+    el.textContent = t("已复制 ✓", "Copied ✓");
+  } catch {
+    // Clipboard access can be refused; select the text so a keyboard copy still works.
+    const area = document.getElementById("prompt");
+    if (!(area instanceof HTMLTextAreaElement)) return;
+    const details = area.closest("details");
+    if (details) details.open = true;
+    area.focus();
+    area.select();
+    el.textContent = t("已选中，按 Ctrl+C 复制", "Selected: press Ctrl+C to copy");
+  }
+}
+function pickFile(id: string) {
+  document.getElementById(id)?.click();
+}
+// ── The review form ──────────────────────────────────────────────────────────
+function reviewError(message: string) {
+  const el = document.getElementById("review-error");
+  if (el) el.textContent = message;
+}
+/** Field changes refresh the two summary cards in place, so the form keeps its focus and scroll. */
+function refreshReview(form: HTMLFormElement) {
+  let card: Card;
+  try {
+    card = readReview(form, app.card);
+  } catch {
+    return;
+  }
+  app.card = card;
+  const cards = reviewCards(card);
+  const register = document.getElementById("register");
+  const compare = document.getElementById("compare");
+  if (register) register.innerHTML = cards.register;
+  if (compare) compare.innerHTML = cards.compare;
+  applyWidths(form);
+  reviewError("");
+}
+// ── Events ───────────────────────────────────────────────────────────────────
+function act(action: string, el: HTMLElement): void | Promise<void> {
+  const value = el.dataset.value ?? "";
+  switch (action) {
+    case "home":
+      return goHome();
+    case "language":
+      setLocale(locale() === "zh" ? "en" : "zh");
+      return render();
+    case "menu":
+      app.menu = !app.menu;
+      return render();
+    case "dismiss-error":
+      app.error = "";
+      return render();
+    case "random":
+      return startRandom();
+    case "personal":
+      app.page = "import";
+      app.error = "";
+      app.menu = false;
+      render();
+      return window.scrollTo(0, 0);
+    case "mode":
+      if (value === "reality" || value === "parallel") app.mode = value as Mode;
+      return render();
+    case "years":
+      if (value === "10" || value === "20" || value === "30") app.years = Number(value) as Years;
+      return render();
+    case "load":
+      return pickFile("load-file");
+    case "load-card":
+      return pickFile("card-file");
+    case "copy-prompt":
+      return copyPrompt(el);
+    case "parse": {
+      app.pasted = document.querySelector<HTMLTextAreaElement>("#paste")?.value ?? app.pasted;
+      app.card = parseCard(app.pasted);
+      app.error = "";
+      app.page = "review";
+      render();
+      return window.scrollTo(0, 0);
+    }
+    case "manual":
+      app.pasted = document.querySelector<HTMLTextAreaElement>("#paste")?.value ?? app.pasted;
+      app.card = blankCard();
+      app.error = "";
+      app.page = "review";
+      render();
+      return window.scrollTo(0, 0);
+    case "edit-paste":
+      app.page = "import";
+      app.error = "";
+      return render();
+    case "back-to-run":
+      return backToRun();
+    case "play":
+      return togglePlay();
+    case "speed":
+      return setSpeed(Number(value));
+    case "skip":
+      return skip();
+    case "focus":
+      return updatePlan((p) => {
+        p.focus = value as Focus;
+      });
+    case "plan":
+      return planAction(el.dataset.key ?? "", value);
+    case "drawer":
+      return openDrawer(value);
+    case "close-drawer":
+      return closeDrawer();
+    case "money-tab":
+      if (value === "overview" || value === "year" || value === "accounts") app.moneyTab = value;
+      return render();
+    case "review":
+      return review(Number(value));
+    case "back-now":
+      return backNow();
+    case "choose":
+      return choose(value);
+    case "down":
+      return adjust((p) => {
+        p.down = Number(value);
+      });
+    case "loan-years":
+      return adjust((p) => {
+        p.years = Number(value);
+      });
+    case "funding":
+      return adjust((p) => {
+        p.funding = value === "loan" ? "loan" : "self";
+      });
+    case "investment":
+      return adjust((p) => {
+        p.investment = value === "bonds" ? "bonds" : "index";
+      });
+    case "custom":
+      return adjust((p) => {
+        if (value === "creative" || value === "learning" || value === "community") p.custom = value;
+      });
+    case "collapse":
+      app.collapsed = true;
+      return render();
+    case "expand":
+      app.collapsed = false;
+      render();
+      return revealDecision();
+    case "commit":
+      return commit();
+    case "ending":
+      return showEnding();
+    case "restart":
+      return requestRestart();
+    case "dialog-cancel":
+      return cancelRestart();
+    case "dialog-replay":
+      app.dialog = null;
+      return openReplay();
+    case "dialog-restart":
+      app.dialog = null;
+      return restartSame();
+    case "save":
+      return save();
+    case "png":
+      return app.run ? exportPng(mapSvg(app.run, app.run.changed.length, locale(), true)) : undefined;
+    case "to-replay":
+      return openReplay();
+    case "replay-key":
+      return selectReplay(value);
+    case "replay-pick":
+      return pickReplay(value);
+    case "replay-continue":
+      return replayContinue();
+    case "replay-ending":
+      return replayEnding();
+    case "replay-world":
+      return replayWorld(value);
+    case "open-line":
+      return openLine(Number(value));
+    case "restart-same":
+      return restartSame();
+  }
+}
+root.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const el = target.closest<HTMLElement>("[data-action]");
+  if (app.menu && !target.closest(".menu-wrap")) {
+    app.menu = false;
+    if (!el) return render();
+  }
+  // A click on the shaded area beside a drawer closes it.
+  if (target.classList.contains("drawer")) return closeDrawer();
+  if (!el || (el instanceof HTMLButtonElement && el.disabled)) return;
+  guard(() => act(el.dataset.action ?? "", el));
+});
+root.addEventListener("change", (event) => {
+  const el = event.target;
+  if (el instanceof HTMLInputElement && el.type === "file") {
+    const file = el.files?.[0];
+    el.value = "";
+    if (file) guard(() => (el.id === "load-file" ? loadSave(file) : loadCard(file)));
+    return;
+  }
+  const form = el instanceof Element ? el.closest("form") : null;
+  if (form instanceof HTMLFormElement && form.id === "review-form") refreshReview(form);
+});
+root.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || form.id !== "review-form") return;
+  event.preventDefault();
+  try {
+    app.card = readReview(form, app.card);
+  } catch (reason) {
+    reviewError(bilingual(reason instanceof Error ? reason.message : String(reason)));
+    return;
+  }
+  begin(newConfig(app.card));
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || app.dialog) return;
+  if (app.menu) {
+    app.menu = false;
+    render();
+    root.querySelector<HTMLElement>("[data-action=menu]")?.focus();
+  } else if (app.drawer) closeDrawer();
+  else if (app.review !== null && app.page === "play") backNow();
+});
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && restartWasPlaying !== null) restartWasPlaying = false;
-  if (document.hidden && playing) {
-    playing = false;
+  if (!document.hidden) return;
+  if (app.dialog && app.wasPlaying) app.wasPlaying = false;
+  if (app.page === "play" && app.playing) {
+    app.playing = false;
+    app.pause = "hidden";
     render();
   }
 });
