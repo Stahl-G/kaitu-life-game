@@ -56,6 +56,8 @@ export function timebar() {
             : app.playing
               ? ["running", t("时间流动中", "Time is running")]
               : ["paused", t("已暂停", "Paused")];
+  const progress = app.review !== null || done || app.atEnd || app.holding ? 1 : app.progress;
+  const month = Math.min(12, Math.floor(progress * 12) + 1);
   const locked = done || !!wait;
   const playLabel =
     app.review !== null
@@ -70,7 +72,7 @@ export function timebar() {
   const main = done && app.review === null
     ? button("ending", t("看结局 →", "See the ending →"), "primary")
     : button("play", playLabel, "primary", locked && app.review === null ? "disabled" : "");
-  return `<div class="timebar"><div class="time-year"><strong>${ch?.year ?? cfg.year}</strong><span>${ch?.age ?? cfg.card.age} ${t("岁", "yrs")}</span><small>${t(`第 ${app.review !== null ? app.review + 1 : app.shown} / ${cfg.years} 年`, `Year ${app.review !== null ? app.review + 1 : app.shown} of ${cfg.years}`)} · ${cfg.mode === "parallel" ? t("平行世界", "Parallel worlds") : t("现实线", "Reality line")}</small></div><span class="status" data-state="${state}" role="status">${label}</span><div class="playback">${main}<div class="speed" role="group" aria-label="${t("速度", "Speed")}">${[1, 2, 4].map((n) => seg("speed", String(n), `${n}×`, app.speed === n)).join("")}</div><span class="duration">${t(`约 ${45 / app.speed} 秒 / 年`, `About ${45 / app.speed} s / year`)}</span><button type="button" class="toggle quiet" data-action="auto-year" aria-pressed="${app.autoYear}">${t("自动翻年", "Turn years automatically")}</button>${button("skip", t("到下个抉择 ↠", "Next choice ↠"), "quiet", locked || app.review !== null ? "disabled" : "")}</div><div class="progress" aria-hidden="true"><i data-w="${done ? 1 : app.atEnd ? 1 : app.progress}" id="year-progress"></i></div></div>`;
+  return `<div class="timebar"><div class="time-year"><strong>${ch?.year ?? cfg.year}</strong><span>${ch?.age ?? cfg.card.age} ${t("岁", "yrs")}</span><small>${t(`第 ${app.review !== null ? app.review + 1 : app.shown} / ${cfg.years} 年`, `Year ${app.review !== null ? app.review + 1 : app.shown} of ${cfg.years}`)} · ${cfg.mode === "parallel" ? t("平行世界", "Parallel worlds") : t("现实线", "Reality line")}</small></div><span class="status" data-state="${state}" role="status">${label}</span><div class="playback">${main}<div class="speed" role="group" aria-label="${t("速度", "Speed")}">${[1, 2, 4, 8].map((n) => seg("speed", String(n), `${n}×`, app.speed === n)).join("")}</div><span class="duration">${t(`约 ${45 / app.speed} 秒 / 年`, `About ${45 / app.speed} s / year`)}</span><button type="button" class="toggle quiet" data-action="auto-year" aria-pressed="${app.autoYear}">${t("自动翻年", "Turn years automatically")}</button>${button("skip", t("到下个抉择 ↠", "Next choice ↠"), "quiet", locked || app.review !== null ? "disabled" : "")}</div><div class="year-track"><div class="year-position"><span>${t("这一年", "This year")}</span><strong id="year-position">${t(`${month} 月 · ${Math.round(progress * 100)}%`, `Month ${month} · ${Math.round(progress * 100)}%`)}</strong></div><div class="progress" id="year-meter" role="progressbar" aria-label="${t("年度进度", "Year progress")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress * 100)}"><i data-w="${progress}" id="year-progress"></i></div></div></div>`;
 }
 function chip(text: string, tone = "") {
   return `<span class="chip${tone ? ` ${tone}` : ""}">${esc(text)}</span>`;

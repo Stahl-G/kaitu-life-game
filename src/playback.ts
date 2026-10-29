@@ -1,4 +1,4 @@
-export const speeds = [1, 2, 4] as const;
+export const speeds = [1, 2, 4, 8] as const;
 export function yearDuration(speed: number): number {
   if (!speeds.includes(speed as 1)) throw new Error("Invalid playback speed");
   return 45000 / speed;
@@ -32,12 +32,14 @@ export function createYearClock(
     handle = undefined;
     if (!canRun()) return;
     const now = driver.now();
-    progress += Math.min(MAX_STEP, Math.max(0, now - last)) / yearDuration(speed);
+    progress = Math.min(1, progress + Math.min(MAX_STEP, Math.max(0, now - last)) / yearDuration(speed));
     last = now;
-    if (progress >= 1) {
+    // Deliver every crossed beat (including settlement) before attempting a turn.
+    onTick(progress);
+    if (progress >= 1 && canRun()) {
       progress = 0;
       onYearEnd();
-    } else onTick(progress);
+    }
     // A callback may already have restarted the clock through `sync`; never run two timers.
     if (canRun() && handle === undefined) {
       last = driver.now();
@@ -60,10 +62,9 @@ export function createYearClock(
         handle = driver.set(tick, TICK);
       }
     },
-    /** Continuing after a pause keeps the year's progress but leaves at least a quarter of the year, without
-     * stepping back past `floor`: whatever the year has already shown stays shown. */
+    /** Continuing keeps the exact year position; already revealed beats never move backwards. */
     resume(floor = 0) {
-      progress = Math.max(Math.min(floor, 1), Math.min(progress, 0.75));
+      progress = Math.max(progress, Math.min(floor, 1));
     },
     get progress() {
       return progress;
@@ -77,3 +78,31 @@ export function createYearClock(
 export const beatAt = (month: number) => (Math.max(1, Math.min(12, month)) - 1) / 12;
 /** Share of the year at which the year-end summary appears. */
 export const summaryAt = 11.5 / 12;
+
+/** A settlement must get a full visible interval after returning from a blocking panel. */
+export function createTurnTimer(
+  canTurn: () => boolean,
+  turn: () => void,
+  delay: number,
+  driver: Pick<ClockDriver, "set" | "clear"> = {
+    set: (callback, ms) => globalThis.setTimeout(callback, ms),
+    clear: handle => globalThis.clearTimeout(handle),
+  },
+) {
+  let handle: ReturnType<typeof setTimeout> | undefined;
+  function stop() {
+    if (handle !== undefined) driver.clear(handle);
+    handle = undefined;
+  }
+  return {
+    stop,
+    sync() {
+      if (!canTurn()) return stop();
+      if (handle !== undefined) return;
+      handle = driver.set(() => {
+        handle = undefined;
+        if (canTurn()) turn();
+      }, delay);
+    },
+  };
+}
