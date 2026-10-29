@@ -35,11 +35,8 @@ export const percent = (x: number, digits = 0) => `${(x * 100).toFixed(digits)}%
 export function button(action: string, label: string, cls = "", attrs = "") {
   return `<button type="button" data-action="${action}"${cls ? ` class="${cls}"` : ""}${attrs ? ` ${attrs}` : ""}>${label}</button>`;
 }
-/** Percentile in words: “前 4%” for the top tenth, otherwise “第 62 百分位”. */
+/** Percentile of take-home per person, read one way only: “高于全国约 62% 的家庭”. */
 export function rank(p: number) {
-  if (p >= 90) {
-    const top = Math.max(1, Math.round(100 - p));
-    return t(`约在全国前 ${top}%`, `about the top ${top}% nationally`);
-  }
-  return t(`约在全国第 ${Math.round(p)} 百分位`, `about the ${Math.round(p)}th percentile nationally`);
+  const share = Math.max(1, Math.min(99, Math.round(p)));
+  return t(`高于全国约 ${share}% 的家庭`, `above about ${share}% of households nationally`);
 }

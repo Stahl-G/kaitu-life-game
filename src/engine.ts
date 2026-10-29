@@ -50,7 +50,6 @@ export function createEngine(definitions: Event[]) {
   return {
     weights,
     next(s: State, j: Journal, m: Market, draw: number): Story[] {
-      if (!Number.isFinite(draw) || draw < 0 || draw >= 1) throw new Error("Invalid draw");
       const candidates = weights(s, m);
       const id = pickWeight(candidates, (max = 1, min = 0) => Math.floor(draw * (max - min + 1)) + min);
       if (!id) throw new Error("No eligible event");
@@ -58,7 +57,8 @@ export function createEngine(definitions: Event[]) {
       const visited = new Set<string>();
       function trigger(key: string) {
         const e = catalog.get(key);
-        if (!e || visited.has(key) || visited.size > 16) throw new Error("Invalid event chain");
+        // Branch targets are checked once in createEngine; a branch back to a visited event simply ends the chain.
+        if (!e || visited.has(key)) return;
         visited.add(key);
         s.lastEvents[e.id] = m.year;
         e.apply?.(s, j, m);

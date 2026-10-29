@@ -4,6 +4,15 @@ import { type State, type Text, changeProps } from "./model.js";
 export const support = [
   { label: "Find A Helpline · 当地支持 / Local support", url: "https://findahelpline.com/" },
 ];
+/** Shown with job loss: the national HR and social security service (hotline 12333). */
+export const workSupport = [
+  { label: "12333 · 人力资源和社会保障部 / HR and social security", url: "https://www.mohrss.gov.cn/" },
+];
+/** Shown with arrears and collection: check the credit record, then local support. */
+export const debtSupport = [
+  { label: "征信中心 · 查询与异议 / Credit Reference Center", url: "https://www.pbccrc.org.cn/" },
+  ...support,
+];
 type Row = [string, string, string, Partial<State["props"]>, number?];
 const common: Row[] = [
   [

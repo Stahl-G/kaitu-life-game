@@ -49,6 +49,8 @@ export function timebar() {
         ? ["paused", t("回看往年 · 已暂停", "Looking back · Paused")]
         : app.drawer
           ? ["paused", t("看细节 · 已暂停", "Details open · Paused")]
+          : app.holding
+            ? ["paused", t("年末 · 已停", "Year end · Stopped")]
           : app.pause === "hidden"
             ? ["paused", t("离开了页面 · 已暂停", "Page hidden · Paused")]
             : app.playing
@@ -56,8 +58,19 @@ export function timebar() {
               : ["paused", t("已暂停", "Paused")];
   const locked = done || !!wait;
   const playLabel =
-    app.review !== null ? t("回到现在", "Back to now") : app.playing && !locked ? t("暂停", "Pause") : t("继续", "Continue");
-  return `<div class="timebar"><div class="time-year"><strong>${ch?.year ?? cfg.year}</strong><span>${ch?.age ?? cfg.card.age} ${t("岁", "yrs")}</span><small>${t(`第 ${app.review !== null ? app.review + 1 : app.shown} / ${cfg.years} 年`, `Year ${app.review !== null ? app.review + 1 : app.shown} of ${cfg.years}`)} · ${cfg.mode === "parallel" ? t("平行世界", "Parallel worlds") : t("现实线", "Reality line")}</small></div><span class="status" data-state="${state}" role="status">${label}</span><div class="playback">${button("play", playLabel, "primary", locked && app.review === null ? "disabled" : "")}<div class="speed" role="group" aria-label="${t("速度", "Speed")}">${[1, 2, 4].map((n) => seg("speed", String(n), `${n}×`, app.speed === n)).join("")}</div><span class="duration">${t(`约 ${45 / app.speed} 秒 / 年`, `About ${45 / app.speed} s / year`)}</span>${button("skip", t("到下个抉择 ↠", "Next choice ↠"), "quiet", locked || app.review !== null ? "disabled" : "")}</div><div class="progress" aria-hidden="true"><i data-w="${done ? 1 : app.atEnd ? 1 : app.progress}" id="year-progress"></i></div></div>`;
+    app.review !== null
+      ? t("回到现在", "Back to now")
+      : app.holding
+        ? cfg.years <= app.shown
+          ? t("结束这一局 →", "End this run →")
+          : t("下一年 →", "Next year →")
+        : app.playing && !locked
+          ? t("暂停", "Pause")
+          : t("继续", "Continue");
+  const main = done && app.review === null
+    ? button("ending", t("看结局 →", "See the ending →"), "primary")
+    : button("play", playLabel, "primary", locked && app.review === null ? "disabled" : "");
+  return `<div class="timebar"><div class="time-year"><strong>${ch?.year ?? cfg.year}</strong><span>${ch?.age ?? cfg.card.age} ${t("岁", "yrs")}</span><small>${t(`第 ${app.review !== null ? app.review + 1 : app.shown} / ${cfg.years} 年`, `Year ${app.review !== null ? app.review + 1 : app.shown} of ${cfg.years}`)} · ${cfg.mode === "parallel" ? t("平行世界", "Parallel worlds") : t("现实线", "Reality line")}</small></div><span class="status" data-state="${state}" role="status">${label}</span><div class="playback">${main}<div class="speed" role="group" aria-label="${t("速度", "Speed")}">${[1, 2, 4].map((n) => seg("speed", String(n), `${n}×`, app.speed === n)).join("")}</div><span class="duration">${t(`约 ${45 / app.speed} 秒 / 年`, `About ${45 / app.speed} s / year`)}</span><button type="button" class="toggle quiet" data-action="auto-year" aria-pressed="${app.autoYear}">${t("自动翻年", "Turn years automatically")}</button>${button("skip", t("到下个抉择 ↠", "Next choice ↠"), "quiet", locked || app.review !== null ? "disabled" : "")}</div><div class="progress" aria-hidden="true"><i data-w="${done ? 1 : app.atEnd ? 1 : app.progress}" id="year-progress"></i></div></div>`;
 }
 function chip(text: string, tone = "") {
   return `<span class="chip${tone ? ` ${tone}` : ""}">${esc(text)}</span>`;
@@ -176,7 +189,7 @@ function yearPanel() {
     : app.config.mode === "parallel" && ch.year >= BRANCH_YEAR
       ? chip(pair(worlds[ch.market.world].name))
       : "";
-  return `<section class="card year" id="year-panel"><div class="section-head"><h2>${review ? t("回看", "Looking back") : t("今年", "This year")} · ${ch.year} · ${ch.age} ${t("岁", "yrs")}</h2>${tag}</div>${!review && !finished() && app.shown < app.config.years ? focusRow(ch.year + 1) : ""}<ol class="beats" id="beats">${beatsHtml(ch, app.progress, all)}</ol>${review ? button("back-now", t("回到现在", "Back to now"), "text-button") : ""}</section>`;
+  return `<section class="card year" id="year-panel"><div class="section-head"><h2>${review ? t("回看", "Looking back") : t("今年", "This year")} · ${ch.year} · ${ch.age} ${t("岁", "yrs")}</h2>${tag}</div>${!review && !finished() && app.shown < app.config.years ? focusRow(ch.year + 1) : ""}<ol class="beats" id="beats" aria-live="polite">${beatsHtml(ch, app.progress, all)}</ol>${review ? button("back-now", t("回到现在", "Back to now"), "text-button") : ""}</section>`;
 }
 function journal() {
   const run = app.run;
@@ -223,9 +236,11 @@ export function decisionCard(p: Pending) {
   const selected = options.find((o) => o.id === app.selection?.option);
   if (app.collapsed)
     return `<section class="card decision-bar" role="status"><b>${t("抉择待定 · 时间暂停", "Choice waiting · Time paused")}</b><span>${esc(pair(choice.title(p.state, p.context)))}</span>${button("expand", t("展开抉择", "Show the choice"), "primary")}</section>`;
+  // One radio group: the chosen option, or else the first open one, takes the Tab stop; arrow keys move.
+  const tabStop = (selected ?? options.find((o) => !o.blocked))?.id;
   const option = (o: Option) =>
-    `<button type="button" class="option" data-action="choose" data-value="${o.id}" aria-pressed="${app.selection?.option === o.id}"${o.blocked ? " disabled" : ""}><strong>${esc(pair(o.label))}</strong>${o.costs.map((c) => `<span class="cost">${esc(pair(c))}</span>`).join("")}${o.effects.map((e) => `<span class="effect">${esc(pair(e))}</span>`).join("")}${o.id === stayId ? `<em class="stay-tag">${t("照现在过", "Carrying on")}</em>` : ""}${o.blocked ? `<span class="blocked">${esc(pair(o.blocked))}</span>` : ""}</button>`;
-  return `<section class="card decision" aria-labelledby="decision-title"><p class="eyebrow">${pair(trackLabels[choice.track])} · ${t(`${p.context.year} 年初`, `Early ${p.context.year}`)} · ${t("时间已暂停", "Time paused")}</p><h2 id="decision-title">${esc(pair(choice.title(p.state, p.context)))}</h2><p class="body">${esc(pair(choice.body(p.state, p.context)))}</p>${factsHtml(choice.facts)}<div class="options">${options.map(option).join("")}</div>${selected?.step ? stepControls(selected, p) : ""}${app.error ? `<p class="error" role="alert">${esc(app.error)}</p>` : ""}<div class="decision-actions">${button("collapse", t("先收起", "Set aside"), "text-button")}${button("commit", selected ? t(`确定：${pair(selected.label)} →`, `Confirm: ${pair(selected.label)} →`) : t("确定 →", "Confirm →"), "primary", selected && !app.committing ? "" : "disabled")}</div></section>`;
+    `<button type="button" class="option" role="radio" data-action="choose" data-value="${o.id}" aria-checked="${app.selection?.option === o.id}" tabindex="${o.id === tabStop ? 0 : -1}"${o.blocked ? " disabled" : ""}><strong>${esc(pair(o.label))}</strong>${o.costs.map((c) => `<span class="cost">${esc(pair(c))}</span>`).join("")}${o.effects.map((e) => `<span class="effect">${esc(pair(e))}</span>`).join("")}${o.id === stayId ? `<em class="stay-tag">${t("照现在过", "Carrying on")}</em>` : ""}${o.blocked ? `<span class="blocked">${esc(pair(o.blocked))}</span>` : ""}</button>`;
+  return `<section class="card decision" aria-labelledby="decision-title"><p class="eyebrow">${pair(trackLabels[choice.track])} · ${t(`${p.context.year} 年初`, `Early ${p.context.year}`)} · ${t("时间已暂停", "Time paused")}</p><h2 id="decision-title">${esc(pair(choice.title(p.state, p.context)))}</h2><p class="body">${esc(pair(choice.body(p.state, p.context)))}</p>${factsHtml(choice.facts)}<div class="options" role="radiogroup" aria-labelledby="decision-title">${options.map(option).join("")}</div>${selected?.step ? stepControls(selected, p) : ""}${app.error ? `<p class="error" role="alert">${esc(app.error)}</p>` : ""}<div class="decision-actions">${button("collapse", t("先收起", "Set aside"), "text-button")}${button("commit", selected ? t(`确定：${pair(selected.label)} →`, `Confirm: ${pair(selected.label)} →`) : t("确定 →", "Confirm →"), "primary", selected && !app.committing ? "" : "disabled")}</div></section>`;
 }
 function finishCard() {
   const ch = current();
@@ -400,8 +415,7 @@ function moneyYear(index: number) {
   const payroll = pay
     ? `<h3>${t("个税怎么算的", "How the income tax was worked out")}</h3><dl class="kv"><div><dt>${t("工资和年终奖", "Salary and bonus")}</dt><dd>${money(pay.salary + pay.bonus)}</dd></div><div><dt>${t("减：基本减除", "Less: basic deduction")}</dt><dd>${money(-yuan(60000))}</dd></div><div><dt>${t("减：社保（个人）", "Less: social insurance")}</dt><dd>${money(-pay.social)}</dd></div><div><dt>${t("减：公积金（个人）", "Less: housing fund")}</dt><dd>${money(-pay.fund)}</dd></div>${pay.deductions.map((d) => `<div><dt>${t("减：", "Less: ")}${esc({ rent: t("住房租金", "rent"), "mortgage-interest": t("房贷利息", "mortgage interest"), children: t("子女", "children"), elderly: t("赡养老人", "elderly support") }[d.label] ?? d.label)}</dt><dd>${money(-d.amount)}</dd></div>`).join("")}<div><dt>${t("应纳税所得额", "Taxable income")}</dt><dd>${money(pay.taxable)}</dd></div><div><dt>${t("个人所得税", "Income tax")}</dt><dd>${money(pay.tax)}</dd></div><div><dt>${t("到手", "Take-home")}</dt><dd>${money(pay.net)}</dd></div></dl>${factLine("iit")}`
     : "";
-  const ok = j.opening + sum(inc) - sum(exp) + sum(ret) === j.closing;
-  return `<p class="sub">${ch.year} · ${ch.age} ${t("岁", "years")}</p><div class="ledger"><section><h3>${t("收入", "Income")} <b>${money(sum(inc))}</b></h3><dl class="kv">${entryRows(inc)}</dl></section><section><h3>${t("支出", "Spending")} <b>${money(sum(exp))}</b></h3><dl class="kv">${entryRows(exp)}</dl></section><section><h3>${t("资产涨跌", "Changes in value")} <b>${money(sum(ret))}</b></h3><dl class="kv">${entryRows(ret)}</dl></section><section class="muted"><h3>${t("转账（不改变净资产）", "Transfers (no change in net worth)")}</h3><dl class="kv">${entryRows(tr)}</dl></section></div><p class="check ${ok ? "ok" : "bad"}">${t("核对", "Check")}：${money(j.opening)} + ${money(sum(inc))} − ${money(sum(exp))} ${sum(ret) < 0 ? "−" : "+"} ${money(Math.abs(sum(ret)))} = ${money(j.closing)} ${ok ? "✓" : "✗"}</p>${payroll}`;
+  return `<p class="sub">${ch.year} · ${ch.age} ${t("岁", "years")}</p><div class="ledger"><section><h3>${t("收入", "Income")} <b>${money(sum(inc))}</b></h3><dl class="kv">${entryRows(inc)}</dl></section><section><h3>${t("支出", "Spending")} <b>${money(sum(exp))}</b></h3><dl class="kv">${entryRows(exp)}</dl></section><section><h3>${t("资产涨跌", "Changes in value")} <b>${money(sum(ret))}</b></h3><dl class="kv">${entryRows(ret)}</dl></section><section class="muted"><h3>${t("转账", "Transfers")}</h3><dl class="kv">${entryRows(tr)}</dl></section></div>${payroll}`;
 }
 function moneyAccounts(index: number) {
   const s = (index >= 0 ? app.run?.changed[index]?.state : app.run?.initial) ?? null;

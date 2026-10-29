@@ -226,11 +226,59 @@ export const sharedNews: Text[] = [
     "Digital health-insurance cards replaced plastic ones; parents learned to book appointments by phone.",
   ],
   ["出生人口继续减少，小区幼儿园合并了两个班。", "Fewer babies again; the estate kindergarten merged two classes."],
+  ["公司开始按周记录“AI 节省的工时”，周报里多了一栏，没人知道该怎么填。", "Your company now logs “hours saved by AI” each week; the report gained a column nobody knows how to fill in."],
+  ["地铁新线通到了城市边缘，沿线的房租第二个月就涨了。", "A new metro line reached the edge of the city; rents along it rose by the second month."],
+  ["个人养老金账户的宣传单塞进了每一封工资条邮件。", "Leaflets for private pension accounts arrived with every payslip email."],
+  ["城市取消了部分落户限制，人才市场的海报从“抢人”换成了“留人”。", "The city relaxed residence registration; job-fair posters switched from “attracting talent” to “keeping it”."],
+  ["外卖平台给骑手上了统一的职业伤害保障，配送费每单涨了几毛钱。", "Delivery platforms gave riders standard injury cover; each order cost a few jiao more."],
+  ["高铁又通了三条线，回老家从五个小时变成了三个小时。", "Three more high-speed lines opened; the trip home dropped from five hours to three."],
+  ["老旧小区加装电梯的公告贴满了楼道，一楼和六楼的住户意见不一。", "Notices about fitting lifts in old blocks filled the stairwells; ground-floor and sixth-floor residents disagreed."],
+  ["自动驾驶出租车在几个区开了试运营，第一批乘客大多是好奇的年轻人。", "Driverless taxis began trial runs in a few districts; the first riders were mostly curious young people."],
+  ["存款利率又降了一次，银行门口理财产品的海报换了新的收益率。", "Deposit rates fell again; the wealth-product posters outside banks got new yields."],
+  ["社区食堂开到了每个街道，午饭十五块，来吃的不只有老人。", "Community canteens opened in every subdistrict; lunch costs fifteen yuan and not only older people come."],
+  ["职业技能补贴扩大了范围，晚上的培训班比白天还满。", "Subsidies for vocational training widened; evening classes filled up faster than daytime ones."],
+  ["一场大台风过后，城市开始重新规划低洼地带的地下车库。", "After a major typhoon the city began redesigning underground car parks in low-lying areas."],
+  ["网上开始流行“县城生活”的视频，几个朋友真的搬回了老家。", "Videos about small-town life went viral; a few friends really did move back home."],
+  ["二手房挂牌量创了新高，中介门店却关了一半。", "Second-hand listings hit a record while half the estate agencies closed."],
+  ["社保卡能直接在全国看病结算了，异地就医不用再先垫钱。", "Social security cards now settle medical bills nationwide; no more paying up front when treated away from home."],
+  ["很多公司把年终奖改成了按季度发，大家年底的心情平淡了一些。", "Many companies switched year-end bonuses to quarterly payments; December felt flatter."],
+  ["电动自行车新规落地，楼下停车棚装上了自动断电的充电桩。", "New e-bike rules took effect; the shed downstairs got chargers that cut out automatically."],
+  ["城市开放了更多二十四小时自习室，晚上十点的座位最难抢。", "The city opened more 24-hour study rooms; seats at ten at night were hardest to get."],
+  ["“银发经济”成了新闻里的高频词，老年大学报名网站开放五分钟就满。", "The “silver economy” was everywhere in the news; the seniors' university filled its places five minutes after opening."],
+  ["数字人民币可以在菜市场用了，摊主的收款码多了一个。", "The digital yuan reached the wet market; stallholders added another payment code."],
+  ["夏天的用电高峰让写字楼实行错峰上班，早上八点的地铁空了一些。", "Summer peak demand brought staggered office hours; the eight o'clock trains emptied a little."],
+  ["几家大厂宣布每周四天半工作制试点，招聘页面上开始写“不加班”。", "A few big firms piloted a four-and-a-half-day week; job ads began to promise “no overtime”."],
+  ["新的个税专项附加扣除提高了标准，很多人第一次认真打开了个税 App。", "Higher special deductions for income tax meant many people opened the tax app properly for the first time."],
+  ["小区里的快递柜换成了无人车，傍晚会自己开到楼下。", "The estate's parcel lockers became small driverless vans that come to the door in the evening."],
+  ["城市开始推行垃圾分类积分，换来的鸡蛋成了老人们最认真的理由。", "Rubbish-sorting points were introduced; free eggs became older residents' most serious motivation."],
+  ["医院普及了 AI 预问诊，候诊时手机会先问你哪里不舒服。", "Hospitals rolled out AI pre-consultations; while you wait, your phone asks what is wrong first."],
+  ["一批新能源车企倒闭，车主群里讨论起了“没有原厂的车怎么修”。", "Several electric-car makers went under; owners' chats discussed repairing cars without a manufacturer."],
+  ["长租公寓有了统一的押金监管，租房合同终于不用押三付一。", "Long-term rental flats got regulated deposits; leases no longer demanded three months up front."],
+  ["“灵活就业”人数又创新高，社保窗口专门开了一个柜台。", "Flexible employment hit another record; the social security office opened a dedicated window."],
+  ["城市马拉松名额要靠抽签，跑步的人比十年前多了一倍。", "City marathon places were drawn by lottery; twice as many people run as a decade ago."],
+  ["学校推行课后延时服务，家长群里的接孩子接龙少了一半。", "Schools extended after-school care; the parents' pick-up rota chat halved."],
+  ["老年人防诈骗讲座开进了每个社区，讲到一半总有人举手说自己差点被骗。", "Anti-fraud talks for older people reached every community; halfway through, someone always admits a near miss."],
+  ["光伏板铺满了城郊的厂房屋顶，电价在白天出现了负数。", "Solar panels covered suburban factory roofs; daytime power prices briefly went negative."],
+  ["城市更新拆掉了一片老街，最后一个周末，很多人回去拍照。", "Urban renewal cleared an old street; on its last weekend many people came back to take photos."],
+  ["宠物医院比儿科门诊还多了，新闻说这是第一次。", "Vet clinics now outnumber paediatric clinics; the news called it a first."],
+  ["失业保险金的领取改成了全程线上，申请从两周缩短到三天。", "Unemployment benefit claims went fully online; processing dropped from two weeks to three days."],
+  ["县城开了第一家大型仓储超市，周末的停车场停满了外地牌照。", "The county town got its first warehouse supermarket; at weekends the car park filled with out-of-town plates."],
+  ["人口普查的新数据公布，老年人口占比又上了一个台阶。", "New census figures came out; the share of older people rose another step."],
+  ["几座城市试行“住房以旧换新”，旧房按评估价抵首付。", "Several cities piloted trading in old homes, with valuations counting toward the new deposit."],
+  ["公司体检加了心理问卷，结果只发给本人，不进人事档案。", "The workplace check-up added a mental-health questionnaire; results go only to you, not to HR."],
 ];
-export const crisisNews: Text = [
-  "全球经济进入衰退，工厂订单减少，很多公司冻结招聘。",
-  "A global recession: factory orders fall and many firms freeze hiring.",
+export const crisisNews: Text[] = [
+  ["全球经济进入衰退，工厂订单减少，很多公司冻结招聘。", "A global recession: factory orders fall and many firms freeze hiring."],
+  ["出口订单接连取消，港口的集装箱堆成了山，招聘网站上的岗位少了三成。", "Export orders kept being cancelled; containers piled up at the port and job listings fell by a third."],
+  ["几家大公司同时宣布裁员，朋友圈里“求内推”的消息一周比一周多。", "Several big firms announced lay-offs at once; requests for referrals multiplied week by week."],
+  ["消费降温，商场里的空铺多了，打折的海报贴到了第二层玻璃上。", "Spending cooled; empty units multiplied at the mall and sale posters went up two layers deep."],
 ];
+/** This world's order of shared or world news: a seeded shuffle, so a life never reads the same item twice. */
+export function newsOrder(seed: string, length: number, key: string) {
+  return Array.from({ length }, (_, i) => i).sort(
+    (a, b) => sample(seed, a, `${key}-order`) - sample(seed, b, `${key}-order`),
+  );
+}
 export const transitionNews: Text = [
   "新的规则送到邮箱时，旧日历上还有几个答应过的约定。你把需要改时间的圈出来，逐个告知对方。世界转弯，并不替人抹掉此前发生的生活。",
   "When the new rules reached your inbox, the old calendar still held promises. You circled the ones that had to move and told each person. The world turning does not erase the life lived before it.",
@@ -254,7 +302,8 @@ export const worldModifiers: Record<
 export const hiddenConfig = {
   probabilities: { contact: 0.05, ai: 0.7, robots: 0.7, war: 0.6, victory: 0.7 },
   contact: [2036, 2042] as const,
-  warStart: [2040, 2047] as const,
+  /** Years after the robotics threshold: the war over autonomous machines never starts before machines exist. */
+  warAfterRobots: [1, 4] as const,
   warYears: [2, 4] as const,
 };
 export interface HiddenChain {
@@ -276,7 +325,7 @@ export function hiddenChain(seed: string): HiddenChain {
   const pickYear = ([a, b]: readonly [number, number], key: string) =>
     a + Math.floor(sample(seed, 0, `hidden-year-${key}`) * (b - a + 1));
   const contact = pickYear(hiddenConfig.contact, "contact");
-  const warStart = pickYear(hiddenConfig.warStart, "war");
+  const warStart = contact + 2 + pickYear(hiddenConfig.warAfterRobots, "war");
   const contactOk = yes("contact");
   const aiOk = yes("ai");
   const robotsOk = yes("robots");

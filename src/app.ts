@@ -35,7 +35,8 @@ import {
 import { app, current, finished, startYear, waiting } from "./ui/state.js";
 const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("Missing #app");
-setLocale(navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en");
+// A Chinese game: Chinese by default, English on request.
+setLocale("zh");
 const newSeed = () => crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase();
 let sampleIndex = crypto.getRandomValues(new Uint32Array(1))[0] % 3;
 /** Name of the life being played, for the shelf on the replay page. */
@@ -59,6 +60,7 @@ const clock = createYearClock(
     app.review === null &&
     app.drawer === null &&
     app.dialog === null &&
+    !app.holding &&
     !document.hidden &&
     current() !== null,
   tick,
@@ -183,7 +185,7 @@ function tick(progress: number) {
   app.progress = progress;
   const ch = current();
   if (!ch) return;
-  if (before < summaryAt && progress >= summaryAt) return render();
+  if (before < summaryAt && progress >= summaryAt) return settle();
   const bar = document.getElementById("year-progress");
   if (bar) bar.style.width = `${progress * 100}%`;
   const shown = visibleCount(ch, before);
@@ -192,6 +194,33 @@ function tick(progress: number) {
   if (!list) return;
   list.innerHTML = beatsHtml(ch, progress, false);
   for (const el of [...list.children].slice(shown)) el.classList.add("fresh");
+}
+/** Seconds the settlement stays on screen before an automatic turn of the year. */
+const AUTO_TURN = 4000;
+let turnTimer: ReturnType<typeof setTimeout> | undefined;
+/** The year's settlement stops the clock; the player turns the year, or it turns by itself when asked to. */
+function settle() {
+  app.holding = true;
+  app.progress = summaryAt;
+  clock.progress = summaryAt;
+  render();
+  scheduleTurn();
+}
+function scheduleTurn() {
+  clearTimeout(turnTimer);
+  if (!app.autoYear || !app.holding) return;
+  turnTimer = setTimeout(() => {
+    const free = app.page === "play" && app.playing && app.review === null && !app.drawer && !app.dialog && !document.hidden;
+    if (app.holding && app.autoYear && free) nextYear();
+  }, AUTO_TURN);
+}
+function nextYear() {
+  clearTimeout(turnTimer);
+  app.holding = false;
+  app.playing = true;
+  app.pause = null;
+  clock.progress = 0;
+  yearEnd();
 }
 function yearEnd() {
   const run = app.run;
@@ -221,6 +250,7 @@ function resumeClock() {
 function enterYear(index: number) {
   const run = app.run;
   if (!run) return;
+  app.holding = false;
   if (run.changed.length > index) {
     app.shown = index + 1;
     app.atEnd = false;
@@ -241,6 +271,8 @@ function revealDecision() {
 }
 // ── Starting and leaving a life ──────────────────────────────────────────────
 function resetView() {
+  app.holding = false;
+  clearTimeout(turnTimer);
   app.review = null;
   app.drawer = null;
   app.menu = false;
@@ -324,6 +356,7 @@ function showEnding() {
 // ── Playing ──────────────────────────────────────────────────────────────────
 function togglePlay() {
   if (app.review !== null) return backNow();
+  if (app.holding) return nextYear();
   if (waiting() || finished()) return;
   app.playing = !app.playing;
   app.pause = app.playing ? null : "user";
@@ -339,6 +372,8 @@ function setSpeed(value: number) {
 function skip() {
   const run = app.run;
   if (!run || app.review !== null || waiting() || finished()) return;
+  clearTimeout(turnTimer);
+  app.holding = false;
   app.shown = Math.max(app.shown, run.changed.length);
   app.atEnd = true;
   app.progress = 1;
@@ -729,6 +764,10 @@ function act(action: string, el: HTMLElement): void | Promise<void> {
       return togglePlay();
     case "speed":
       return setSpeed(Number(value));
+    case "auto-year":
+      app.autoYear = !app.autoYear;
+      render();
+      return scheduleTurn();
     case "skip":
       return skip();
     case "focus":
@@ -849,7 +888,19 @@ root.addEventListener("submit", (event) => {
   }
   begin(newConfig(app.card));
 });
+const arrows: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
 document.addEventListener("keydown", (event) => {
+  const radio = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[role=radio]") : null;
+  if (radio && event.key in arrows) {
+    const group = [...(radio.parentElement?.querySelectorAll<HTMLButtonElement>("[role=radio]:not([disabled])") ?? [])];
+    const next = group[(group.indexOf(radio as HTMLButtonElement) + arrows[event.key] + group.length) % group.length];
+    if (next) {
+      event.preventDefault();
+      next.click();
+      root.querySelector<HTMLElement>(`[role=radio][data-value="${CSS.escape(next.dataset.value ?? "")}"]`)?.focus();
+    }
+    return;
+  }
   if (event.key !== "Escape" || app.dialog) return;
   if (app.menu) {
     app.menu = false;
