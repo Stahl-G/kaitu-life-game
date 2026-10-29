@@ -142,7 +142,7 @@ test("worlds: one shared line until 2035, six worlds after it in even shares, a 
   for (let i = 0; i < 10000; i++) if (hiddenChain(`hidden-${i}`).unlocked) unlocked++;
   assert.ok(unlocked > 50 && unlocked < 200, String(unlocked));
 });
-test("paired seeds with the same answers still live different years", () => {
+test("160 pairs of lives with the same answers: in 95% of pairs, less than half of what is read is the same", () => {
   const normalized = (text) => text.replace(/[\d,.¥￥%]+/g, "#").replace(/\s/g, "");
   function overlap(a, b) {
     const counts = new Map();
@@ -155,16 +155,48 @@ test("paired seeds with the same answers still live different years", () => {
       }
     return (2 * same) / (a.length + b.length || 1);
   }
-  // What happens to the player: world news is shared by design, and a story echoing the same answer is the same.
-  const stories = (seed) =>
-    simulate(config(seed), { policy: "stay", baseline: false })
-      .changed.flatMap((row) => row.stories)
-      .filter((st) => st.kind !== "world" && st.kind !== "decision")
-      .map((st) => normalized(st.text[0]));
-  const pairs = [];
-  for (let i = 0; i < 60; i += 2) pairs.push(overlap(stories(`variety-${i}`), stories(`variety-${i + 1}`)));
-  const mean = pairs.reduce((a, b) => a + b, 0) / pairs.length;
-  assert.ok(mean < 0.5, String(mean));
+  const p95 = (values) => [...values].sort((a, b) => a - b)[Math.floor(0.95 * (values.length - 1))];
+  for (const mode of ["reality", "parallel"]) {
+    const lives = [];
+    for (let i = 0; i < 320; i++)
+      lives.push(
+        simulate(config(`pair-${i}`, { mode }), { policy: "stay", baseline: false }).changed.flatMap((row) => row.stories),
+      );
+    // Everything the player reads, world news and choice stories included; and what happens to the player alone.
+    for (const [name, keep] of [
+      ["all", () => true],
+      ["personal", (st) => st.kind !== "world" && st.kind !== "decision"],
+    ]) {
+      const pairs = [];
+      for (let i = 0; i < 320; i += 2)
+        pairs.push(
+          overlap(
+            lives[i].filter(keep).map((st) => normalized(st.text[0])),
+            lives[i + 1].filter(keep).map((st) => normalized(st.text[0])),
+          ),
+        );
+      assert.ok(p95(pairs) < 0.5, `${mode} ${name}: p95 ${p95(pairs)}`);
+    }
+  }
+});
+test("the hidden chain happens in order: contact, AI, robots, then the war over machines", () => {
+  for (let i = 0; i < 10000; i++) {
+    const h = hiddenChain(`order-${i}`);
+    assert.ok(h.contact < h.ai && h.ai < h.robots && h.robots < h.warStart && h.warStart < h.warEnd, `order-${i}`);
+    assert.ok(h.warEnd + 1 <= 2055, `order-${i} ends ${h.warEnd}`);
+  }
+});
+test("losing a job and falling into arrears come with help links", () => {
+  const seen = new Map();
+  for (let i = 0; i < 300 && seen.size < 2; i++) {
+    const run = simulate(config(`help-${i}`, { years: 30 }), { policy: "stay", baseline: false });
+    for (const st of run.changed.flatMap((row) => row.stories))
+      if (st.id === "life-job-loss" || st.id === "debt-notice") seen.set(st.id, st);
+  }
+  for (const id of ["life-job-loss", "debt-notice"]) {
+    assert.ok(seen.has(id), id);
+    assert.ok(seen.get(id).support?.length && seen.get(id).support.every((x) => x.url.startsWith("https://")), id);
+  }
 });
 test("debt brings a grace period, collection and temporary housing, then recovery", () => {
   const c = config("debt");

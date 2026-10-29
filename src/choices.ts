@@ -84,8 +84,14 @@ export const carriedOn = (s: State, id: string) => s.flags[`carried-${id}`] ?? 0
 /** A repeating choice answered with "carry on" comes back at growing intervals instead of nagging. */
 const again = (s: State, id: string, years: number, year: number) =>
   since(s, id, years * (1 + carriedOn(s, id)), year);
-/** The carry-on story of a repeating choice changes as the answer repeats. */
-const nth = (s: State, id: string, texts: Text[]) => texts[Math.min(carriedOn(s, id), texts.length - 1)];
+/** One of several wordings, fixed by the life seed and year, so two lives giving the same answer read differently. */
+const oneOf = (c: YearContext, id: string, texts: Text[]) =>
+  texts[Math.floor(sample(c.seed, c.year, `copy-${id}`) * texts.length)];
+/** The carry-on story of a repeating choice changes as the answer repeats; each step may have several wordings. */
+const nth = (s: State, c: YearContext, id: string, texts: (Text | Text[])[]) => {
+  const step = texts[Math.min(carriedOn(s, id), texts.length - 1)];
+  return typeof step[0] === "string" ? (step as Text) : oneOf(c, id, step as Text[]);
+};
 /** Game settings for insurance premiums, by age at purchase. */
 export const premiums = {
   medical: (age: number) => yuan(300 + Math.max(0, age - 25) * 30),
@@ -487,12 +493,12 @@ export const choices: Choice[] = [
             ? ["你又投入了一笔。买入那天，你没再打开行情软件。", "You added more and did not open the market app again that day."]
             : pick.option === "sell"
               ? ["你全部卖出，钱回到了存款里。晚上睡得踏实了，账户也停在了这一天。", "You sold everything back into deposits. You slept better; the account stopped on that day."]
-              : nth(s, "crash", [
-                  ["你什么也没做，定投照常扣款。", "You did nothing; the monthly investment carried on."],
-                  [
+              : nth(s, c, "crash", [
+                  [["你什么也没做，定投照常扣款。", "You did nothing; the monthly investment carried on."], ["你把行情软件挪到了手机的最后一页，定投照常扣款。", "You moved the market app to the last page of your phone; the monthly investment carried on."]],
+                  [[
                     "又是一个跌得很深的年份。这一次你连行情软件都没打开。",
                     "Another deep fall. This time you did not even open the market app.",
-                  ],
+                  ], ["又跌了。你翻出上次大跌时写的备忘：别动。你照做了。", "Another fall. You found the note you wrote last time: don't touch it. You didn't."]],
                 ]),
         ),
       ];
@@ -561,10 +567,14 @@ export const choices: Choice[] = [
         s.family.care = "hired";
         changeProps(s, { relationships: 1 });
         return [
-          story("choice-parents-hire", [
-            "护工阿姨很细心，每天发一张饭菜的照片。你在周日视频时看到父母都胖了一点。",
-            "The carer was attentive and sent a photo of every meal. On Sunday calls your parents looked a little better fed.",
-          ]),
+          story(
+            "choice-parents-hire",
+            oneOf(c, "parents-hire", [
+              ["护工阿姨很细心，每天发一张饭菜的照片。你在周日视频时看到父母都胖了一点。", "The carer was attentive and sent a photo of every meal. On Sunday calls your parents looked a little better fed."],
+              ["第一位护工做了两周就辞了，第二位会讲家乡话，父亲终于肯按时吃药。", "The first carer left after two weeks; the second spoke the local dialect, and your father finally took his pills on time."],
+              ["你每晚和护工通一次电话，记下血压和饭量。三个月后，本子写满了半本。", "You phoned the carer every evening and noted blood pressure and meals; after three months half a notebook was full."],
+            ]),
+          ),
         ];
       }
       s.flags.caregiver = c.year;
@@ -722,19 +732,19 @@ export const choices: Choice[] = [
       return [
         story(
           "choice-home-rent",
-          nth(s, "home", [
-            [
+          nth(s, c, "home", [
+            [[
               "你续了租约，把首付目标写在了记账软件的第一页。",
               "You renewed the lease and put the deposit target on the first page of your budgeting app.",
-            ],
-            [
+            ], ["你和房东续签了两年，顺手把首付目标设成了手机壁纸。", "You renewed for two more years and set the deposit target as your phone wallpaper."]],
+            [[
               "又到续租的时候。你没再去看样板间，只把首付进度截了张图发给自己。",
               "Lease renewal again. You skipped the show flats and sent yourself a screenshot of the deposit fund instead.",
-            ],
-            [
+            ], ["中介又打来电话推荐新盘。你说先不看了，挂掉后把每月存钱的数额提高了一点。", "An agent called about a new development again. You said not now, then nudged your monthly savings up a little."]],
+            [[
               "你不再把租房当成过渡。房东换了新的热水器，阳台上多了第三盆花。",
               "You stopped treating renting as a stopgap. The landlord fitted a new water heater; a third pot of flowers went out on the balcony.",
-            ],
+            ], ["你给出租屋换了窗帘和书架。朋友来做客，说这里看起来像住了很多年。", "You put up new curtains and shelves in the rented flat. A visiting friend said it looked lived-in for years."]],
           ]),
         ),
       ];
@@ -833,19 +843,19 @@ export const choices: Choice[] = [
       return [
         story(
           "choice-keep",
-          nth(s, "marry", [
-            [
+          nth(s, c, "marry", [
+            [[
               "你们决定先不改变什么，各自的钥匙还是各自拿着。",
               "You decided to change nothing for now; each of you kept your own keys.",
-            ],
-            [
+            ], ["你们约好明年再说。周五晚上照旧一起吃饭，周日各回各家。", "You agreed to talk again next year. Friday dinners as usual; Sunday nights at separate homes."]],
+            [[
               "家里又问起来，你们还是说再等等。回去的路上，两个人都没再提这件事。",
               "Family asked again and you both said “later”. Neither of you brought it up on the way home.",
-            ],
-            [
+            ], ["亲戚的婚礼上，有人问你们什么时候。你们相视一笑，没有回答。", "At a cousin's wedding someone asked when it would be your turn. You exchanged a smile and said nothing."]],
+            [[
               "你们不再把这件事当成待办。各住各的，也一起过了好几个春节。",
               "You stopped treating it as a to-do. Two homes, and several New Years spent together all the same.",
-            ],
+            ], ["两套钥匙、两个冰箱，你们已经很习惯。旅行的照片里，总是两个人。", "Two sets of keys, two fridges; you are used to it. In the travel photos it is always the two of you."]],
           ]),
         ),
       ];
@@ -919,12 +929,12 @@ export const choices: Choice[] = [
       return [
         story(
           "choice-child-later",
-          nth(s, "child", [
-            ["你们把这件事放到几年后再谈，先把眼前的日子过稳。", "You agreed to revisit it in a few years and steady the present first."],
-            [
+          nth(s, c, "child", [
+            [["你们把这件事放到几年后再谈，先把眼前的日子过稳。", "You agreed to revisit it in a few years and steady the present first."], ["你们去听了一场育儿讲座，回来的路上决定再等两年。", "You went to a talk on raising children and decided on the way home to wait two more years."]],
+            [[
               "那张育儿开销的表格又更新了一版。你们看完，还是决定再等等。",
               "The childcare spreadsheet got another update. You read it together and decided to wait again.",
-            ],
+            ], ["朋友的孩子满月，你们抱了很久。回家后谁也没提那张表格。", "At a friend's baby's first-month party you both held the baby a long time. At home neither mentioned the spreadsheet."]],
           ]),
         ),
       ];
@@ -973,10 +983,14 @@ export const choices: Choice[] = [
     apply(s, _j, c, pick) {
       if (pick.option === "none")
         return [
-          story("choice-insurance-none", [
-            "你决定先不买。体检报告收进抽屉，复查定在半年后。",
-            "You decided not to buy for now. The report went into a drawer; the follow-up is in six months.",
-          ]),
+          story(
+            "choice-insurance-none",
+            oneOf(c, "insurance-none", [
+              ["你决定先不买。体检报告收进抽屉，复查定在半年后。", "You decided not to buy for now. The report went into a drawer; the follow-up is in six months."],
+              ["你把两份方案都存进了收藏夹，回了朋友一句“再看看”。那天晚上你早睡了一小时。", "You saved both plans and told your friend “I'll think about it”. That night you went to bed an hour early."],
+              ["你算了算医保能报的部分，决定这笔钱先留在存款里，复查时再说。", "You worked out what public insurance would cover and kept the money in savings until the follow-up."],
+            ]),
+          ),
         ];
       s.insurance.medical = true;
       if (pick.option === "both") {
@@ -1058,10 +1072,14 @@ export const choices: Choice[] = [
     apply(s, j, c, pick) {
       if (pick.option === "none")
         return [
-          story("choice-car-none", [
-            "你没买车，把常用的三条公交线路收藏在手机首页。",
-            "You did not buy a car and pinned your three usual bus routes to your phone's home screen.",
-          ]),
+          story(
+            "choice-car-none",
+            oneOf(c, "car-none", [
+              ["你没买车，把常用的三条公交线路收藏在手机首页。", "You did not buy a car and pinned your three usual bus routes to your phone's home screen."],
+              ["你办了一张共享汽车的会员卡，一年用了九次，比养一辆车省心。", "You joined a car-sharing scheme instead and used it nine times that year; easier than owning one."],
+              ["你给旧自行车换了新胎和车灯，下雨天就打车。", "You fitted new tyres and lights to the old bicycle, and took taxis when it rained."],
+            ]),
+          ),
         ];
       const total = price(s, yuan(150000));
       if (pick.option === "loan") {
@@ -1147,10 +1165,14 @@ export const choices: Choice[] = [
         ];
       }
       return [
-        story("choice-far-stay", [
-          "你把明信片贴在了显示器旁边，说等明年。",
-          "You stuck the postcard beside your monitor and said: next year.",
-        ]),
+        story(
+          "choice-far-stay",
+          oneOf(c, "far-stay", [
+            ["你把明信片贴在了显示器旁边，说等明年。", "You stuck the postcard beside your monitor and said: next year."],
+            ["外派名额给了隔壁组的同事。你帮对方整理了交接文档，送行那天喝了两杯。", "The posting went to a colleague next door. You helped with the handover notes and had two drinks at the farewell."],
+            ["你把攒下的假期换成了两次周末短途，冰岛先放进了以后的清单。", "You turned the saved leave into two weekend trips and put Iceland on the someday list."],
+          ]),
+        ),
       ];
     },
   },

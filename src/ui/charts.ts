@@ -44,7 +44,7 @@ export function lineChart(
   const step = Math.max(1, Math.ceil(years.length / (narrow ? 3 : 6)));
   const xLabels = years
     .map((yr, i) =>
-      i % step === 0 || i === years.length - 1
+      (i % step === 0 && years.length - 1 - i >= step / 2) || i === years.length - 1
         ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="tick">${yr}</text>`
         : "",
     )

@@ -44,6 +44,10 @@ export const app = {
   replayKey: null as string | null,
   replayPick: null as Pick | null,
   committing: false,
+  /** The year has settled and waits for "next year". */
+  holding: false,
+  /** Turn to the next year by itself a few seconds after the settlement. */
+  autoYear: false,
 };
 /** First simulated year: the current calendar year. */
 export const startYear = () => new Date().getFullYear();

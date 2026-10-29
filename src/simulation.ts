@@ -16,7 +16,7 @@ import {
 } from "./choices.js";
 import { progressChains } from "./decisions.js";
 import { createEngine } from "./engine.js";
-import { events, support } from "./events.js";
+import { debtSupport, events, support } from "./events.js";
 import { everydayEvents } from "./everyday.js";
 import {
   type Journal,
@@ -59,6 +59,7 @@ import {
   crisisNews,
   hiddenChain,
   hiddenNews,
+  newsOrder,
   sharedNews,
   transitionNews,
   worldFor,
@@ -472,8 +473,8 @@ function household(s: State, j: Journal, c: YearContext, takeHome: number): Stor
 }
 function debtConsequences(s: State, j: Journal): Story[] {
   const stories: Story[] = [];
-  const add = (id: string, text: Story["text"], sensitive = false) =>
-    stories.push({ id, text, kind: "consequence", month: 11, ...(sensitive ? { support } : {}) });
+  const add = (id: string, text: Story["text"], help?: Story["support"]) =>
+    stories.push({ id, text, kind: "consequence", month: 11, ...(help ? { support: help } : {}) });
   if (j.arrears > 0) {
     s.arrearsYears++;
     changeProps(s, { happiness: -4, health: -2 });
@@ -481,7 +482,7 @@ function debtConsequences(s: State, j: Journal): Story[] {
       add("debt-notice", [
         "未付账单进入催缴，你先申请了宽限安排。本年欠款和利息仍留在账上。",
         "Unpaid bills triggered a collection notice. You requested a grace arrangement; debt and interest remained on the books.",
-      ]);
+      ], debtSupport);
     else if (s.arrearsYears === 2) {
       const sale = s.assets.stocks + s.assets.bonds + s.assets.property + s.assets.car;
       for (const a of ["stocks", "bonds", "property", "car"] as const)
@@ -501,7 +502,7 @@ function debtConsequences(s: State, j: Journal): Story[] {
         add("debt-sell", [
           "宽限期后仍未补齐欠款，你出售了可处置的资产。交易费用付出后，所得优先还债。",
           "After the grace period, arrears remained. You sold available assets and used proceeds, after fees, to repay debt.",
-        ]);
+        ], debtSupport);
       } else if (s.housing !== "family") {
         s.housing = "shared";
         if (!s.rent) s.rent = Math.round(tiers[s.tier].rent * s.priceLevel);
@@ -509,7 +510,7 @@ function debtConsequences(s: State, j: Journal): Story[] {
         add("debt-shared", [
           "你搬进合租房压低固定开支。打包时舍弃了一些家具，债务还需要新的收入来解决。",
           "You moved into shared housing to reduce fixed costs, leaving some furniture behind. Debt still required new income.",
-        ]);
+        ], debtSupport);
       }
     } else if (s.arrearsYears >= 3 && (s.housing === "rent" || s.housing === "owned")) {
       s.housing = "shared";
@@ -518,7 +519,7 @@ function debtConsequences(s: State, j: Journal): Story[] {
       add("debt-shared", [
         "你搬进合租房，把省下的租金排进还款计划。",
         "You moved into shared housing and put the rent saving into the repayment plan.",
-      ]);
+      ], debtSupport);
     } else if (
       s.arrearsYears >= 4 &&
       s.housing === "shared" &&
@@ -534,7 +535,7 @@ function debtConsequences(s: State, j: Journal): Story[] {
           "租约无法续上，你暂时没有固定住所，开始联系临时住宿和当地支持服务。",
           "Unable to renew the lease, you temporarily had no stable home and contacted temporary housing and local support services.",
         ],
-        true,
+        support,
       );
     }
   } else if (s.arrearsYears > 0) {
@@ -573,10 +574,12 @@ function worldStories(c: YearContext): Story[] {
   }
   const branched = c.mode === "parallel" && c.year >= BRANCH_YEAR;
   const list = branched ? worlds[c.world].news : sharedNews;
-  const index = branched
-    ? (c.year - BRANCH_YEAR) % list.length
-    : Math.floor(sample(c.worldSeed, c.year, "news") * list.length);
-  news(c.market.crisis ? "world-crisis" : `world-news-${c.world}-${index}`, 7, c.market.crisis ? crisisNews : list[index]);
+  const step = branched ? c.year - BRANCH_YEAR : c.offset;
+  const index = newsOrder(c.worldSeed, list.length, branched ? c.world : "shared")[step % list.length];
+  if (c.market.crisis) {
+    const k = Math.floor(sample(c.worldSeed, c.year, "crisis-news") * crisisNews.length);
+    news(`world-crisis-${k}`, 7, crisisNews[k]);
+  } else news(`world-news-${c.world}-${index}`, 7, list[index]);
   return out;
 }
 function beginYear(previous: State, config: Config, offset: number, line: Line) {
@@ -745,7 +748,9 @@ export function step(
             ],
     });
   add(3, engine.next(s, journal, market, sample(c.seed, c.year, "annual-event")));
-  add(8, engine.next(s, journal, market, sample(c.seed, c.year, "annual-event-2")));
+  // A second everyday event in most years, not all: a life of 20–30 years should not use up the pool.
+  if (sample(c.seed, c.year, "second-event") < 0.6)
+    add(8, engine.next(s, journal, market, sample(c.seed, c.year, "annual-event-2")));
   add(11, lateLife(s, journal, c));
   add(11, debtConsequences(s, journal));
   if (s.role === "employed" || s.role === "founder") s.experience++;

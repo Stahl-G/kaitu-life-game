@@ -161,6 +161,13 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
+button.primary:disabled {
+  opacity: 1;
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--muted);
+  font-weight: 400;
+}
 button.primary {
   background: var(--rust);
   border-color: var(--rust);
@@ -1255,7 +1262,7 @@ main {
   font-size: 12.5px;
   color: var(--warn);
 }
-.option[aria-pressed="true"] {
+.option[aria-checked="true"] {
   border-color: var(--rust);
   box-shadow: inset 0 0 0 1px var(--rust);
   background: color-mix(in srgb, var(--rust-soft) 55%, var(--panel));
@@ -1493,18 +1500,10 @@ main {
 .ledger .muted {
   opacity: 0.8;
 }
-.check {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--panel-2);
+.playback .toggle {
+  width: auto;
+  margin-top: 0;
   font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.check.ok {
-  color: var(--ok);
-}
-.check.bad {
-  color: var(--bad);
 }
 .plans-form section {
   padding: 12px 0;

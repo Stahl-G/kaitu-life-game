@@ -93,7 +93,7 @@ function lineColumn(s: State, label: string, tone: "base" | "you", perCapita: nu
         : s.family.partner === "dating"
           ? t("恋爱中", "In a relationship")
           : t("单身", "Single");
-  return `<div class="line-col ${tone}"><h3><span class="key ${tone}"></span>${label}</h3><p class="hero">${short(netWorth(s.assets))}</p><p class="sub">${t("净资产", "Net worth")} · ${esc(rank(percentile))}</p><dl class="kv"><div><dt>${t("工作", "Work")}</dt><dd>${pair(roleLabels[s.role])}</dd></div><div><dt>${t("住处", "Home")}</dt><dd>${esc(s.place === "hometown" ? s.hometown : s.city)} · ${pair(housingNames[s.housing])}</dd></div><div><dt>${t("家庭", "Family")}</dt><dd>${esc(family)}</dd></div><div><dt>${t("人均到手", "Take-home pp")}</dt><dd>${short(perCapita)}</dd></div>${dimensions.map((k) => `<div><dt>${pair(labels[k])}</dt><dd>${s.props[k]}</dd></div>`).join("")}</dl></div>`;
+  return `<div class="line-col ${tone}"><h3><span class="key ${tone}"></span>${label}</h3><p class="hero">${short(netWorth(s.assets))}</p><p class="sub">${t("净资产", "Net worth")}</p><dl class="kv"><div><dt>${t("工作", "Work")}</dt><dd>${pair(roleLabels[s.role])}</dd></div><div><dt>${t("住处", "Home")}</dt><dd>${esc(s.place === "hometown" ? s.hometown : s.city)} · ${pair(housingNames[s.housing])}</dd></div><div><dt>${t("家庭", "Family")}</dt><dd>${esc(family)}</dd></div><div><dt>${t("人均到手", "Take-home pp")}</dt><dd>${short(perCapita)} · ${esc(rank(percentile))}</dd></div>${dimensions.map((k) => `<div><dt>${pair(labels[k])}</dt><dd>${s.props[k]}</dd></div>`).join("")}</dl></div>`;
 }
 function causes(list: Attribution[]) {
   if (!list.length)

@@ -1,3 +1,4 @@
+import { workSupport } from "./events.js";
 import type { YearContext } from "./choices.js";
 import { type Journal, expense, income, yuan } from "./finance.js";
 import { type State, type Story, type Text, changeProps, rmb } from "./model.js";
@@ -26,12 +27,13 @@ export const partnerNames: Text[] = [
   ["林夏", "Lin Xia"],
   ["沈一", "Shen Yi"],
 ];
-const life = (id: string, month: number, text: Text, facts?: string[]): Story => ({
+const life = (id: string, month: number, text: Text, facts?: string[], support?: Story["support"]): Story => ({
   id,
   text,
   kind: "life",
   month,
   ...(facts ? { facts } : {}),
+  ...(support ? { support } : {}),
 });
 function medical(s: State, j: Journal, total: number, publicShare: number) {
   const insured = s.insurance.basic ? Math.round(Math.max(0, total - cover.threshold) * publicShare) : 0;
@@ -123,6 +125,7 @@ export function lateLife(s: State, j: Journal, c: YearContext): Story[] {
           `At year end a restructuring put you on the list. You received ${months} months' severance and applied for unemployment insurance.`,
         ],
         ["unemployment2025"],
+        workSupport,
       ),
     );
   }
