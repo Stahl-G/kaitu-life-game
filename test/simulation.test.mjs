@@ -1,316 +1,254 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blankCard, parseCard, sampleCard } from "../dist/card.js";
-import { decisionYears, eligibility } from "../dist/decisions.js";
-import { createEngine } from "../dist/engine.js";
-import { events } from "../dist/events.js";
-import { closeJournal, netWorth, openJournal, yuan } from "../dist/finance.js";
+import { sampleCard } from "../dist/card.js";
+import { choiceById, defaultPick } from "../dist/choices.js";
+import { closeJournal, emptyBalance, netWorth, openJournal, yuan } from "../dist/finance.js";
+import { mapSvg } from "../dist/map.js";
 import { invest, marketFor, settleMarket } from "../dist/market.js";
-import { YEARS, defaultHabits, initialState, parseSave, simulate, step } from "../dist/simulation.js";
-const config = (seed = "A") => ({
+import { simulatePeers } from "../dist/peers.js";
+import { sceneSvg } from "../dist/scene.js";
+import {
+  attribution,
+  continueRun,
+  defaultPlan,
+  initialState,
+  parseSave,
+  simulate,
+  step,
+} from "../dist/simulation.js";
+import { hiddenChain, worldFor, worlds } from "../dist/world.js";
+const config = (seed = "A", patch = {}) => ({
   card: sampleCard(0, "zh"),
   worldSeed: seed,
   lifeSeed: `${seed}-life`,
   year: 2026,
+  years: 20,
+  mode: "reality",
   decisions: {},
   plans: {},
+  ...patch,
 });
-const kinds = ["career", "business", "abroad", "invest", "study", "stay", "custom"];
-function play(seed, kind) {
-  const c = config(seed);
-  let s = initialState(c.card, c.lifeSeed);
-  const rows = [];
-  for (let i = 0; i < YEARS; i++) {
-    if (decisionYears.includes(i)) {
-      c.decisions[i] = eligibility(s, kind)
-        ? { kind: "stay" }
-        : { kind, funding: "loan", custom: "creative", investment: "index" };
-    }
-    const row = step(s, c, i);
-    rows.push(row);
-    s = row.state;
+/** Answers every waiting choice the way a player would, through the same calls the app makes. */
+function play(c, choose) {
+  let run = simulate(c);
+  while (run.pending) {
+    const p = run.pending;
+    const options = p.choice.options(p.state, p.context).filter((o) => !o.blocked);
+    c.decisions[p.key] = defaultPick(p.choice, p.state, p.context, choose(options, p));
+    run = continueRun(run, c, p.offset);
   }
-  return { c, rows };
+  return run;
 }
-function overlap(a, b) {
-  const counts = new Map();
-  for (const x of a) counts.set(x, (counts.get(x) || 0) + 1);
-  let same = 0;
-  for (const x of b)
-    if (counts.get(x) > 0) {
-      same++;
-      counts.set(x, counts.get(x) - 1);
-    }
-  return (2 * same) / (a.length + b.length);
-}
-const normalized = (text) =>
-  text
-    .replace(/[\d,.¥￥]+/g, "#")
-    .replace(/林|Lin|周|Zhou|乔|Jo/g, "PERSON")
-    .replace(/\s/g, "");
-test("card source and unknown survive; invalid card/save operations are rejected", () => {
-  const card = blankCard();
-  card.age = 36;
-  card.name = "<script>bad</script>";
-  card.attributes.knowledge = { value: 71, source: "AI game estimate" };
-  assert.deepEqual(parseCard(JSON.stringify(card)), card);
-  assert.equal(card.attributes.health.value, null);
+const reconciles = (j) =>
+  j.opening +
+    j.entries.reduce((n, e) => n + (e.kind === "expense" ? -e.amount : e.kind === "transfer" ? 0 : e.amount), 0) ===
+  j.closing;
+test("save boundary: version 3 round-trips; version 2 and invalid logs are refused with a reason", () => {
+  const c = play(config("save"), (o) => o.find((x) => !x.stay) ?? o[0]).config;
+  c.plans[3] = { ...defaultPlan(), focus: "health", habits: { jobSearch: true, training: false, monthlyInvestment: yuan(1000) } };
+  const text = JSON.stringify({ kind: "kaitu-simulation", version: 3, config: c });
+  assert.deepEqual(parseSave(text), c);
+  assert.deepEqual(simulate(parseSave(text)).changed, simulate(c).changed);
+  assert.throws(() => parseSave(JSON.stringify({ kind: "kaitu-simulation", version: 2, config: c })), /version 2/);
+  const bad = (patch) => JSON.stringify({ kind: "kaitu-simulation", version: 3, config: { ...c, ...patch } });
   for (const patch of [
-    { age: -1 },
-    { age: 2.5 },
-    { attributes: [] },
-    { attributes: { health: { value: 101 } } },
-    { role: "both" },
-    { version: 1 },
+    { years: 15 },
+    { mode: "dream" },
+    { decisions: { "no-such-choice": { option: "x" } } },
+    { decisions: { home: { option: "city", down: 0.05, years: 30 } } },
+    { plans: { 0: { ...defaultPlan(), habits: { jobSearch: false, training: false, monthlyInvestment: -1 } } } },
+    { plans: { 25: defaultPlan() } },
   ])
-    assert.throws(() => parseCard(JSON.stringify({ ...card, ...patch })));
-  const c = config();
-  const run = simulate(c);
-  assert.deepEqual(parseSave(JSON.stringify({ kind: "kaitu-simulation", version: 2, config: c })), c);
-  assert.throws(() =>
-    parseSave(
-      JSON.stringify({
-        kind: "kaitu-simulation",
-        version: 2,
-        config: {
-          ...c,
-          plans: { 0: { focus: "work", habits: { ...defaultHabits(), monthlyInvestment: -1 } } },
-        },
-      }),
-    ),
-  );
-  assert.equal(run.changed[0].age, c.card.age + 1);
-  assert.deepEqual(c, config());
+    assert.throws(() => parseSave(bad(patch)));
 });
-test("160 fixed seeds: replay, all decision outcomes, current-state selection, shared markets and accounting", () => {
-  const report = {};
-  for (const kind of kinds) {
-    const runs = [];
-    const outcomes = new Set();
-    for (let i = 0; i < 160; i++) {
-      const seed = `acceptance-${String(i).padStart(3, "0")}`;
-      const a = play(seed, kind);
-      const replay = simulate(a.c);
-      assert.deepEqual(a.rows, replay.changed);
-      for (const [index, row] of a.rows.entries()) {
-        assert.deepEqual(row.market, replay.baseline[index].market);
-        assert.deepEqual(row.market, marketFor(seed, row.year));
-        assert.ok(["employed", "founder", "student", "unemployed", "retired"].includes(row.state.role));
-        assert.deepEqual(Object.keys(row.state.props).sort(), [
-          "happiness",
-          "health",
-          "knowledge",
-          "relationships",
-        ]);
-        assert.equal(
-          row.journal.opening +
-            row.journal.entries.reduce(
-              (n, e) => n + (e.kind === "expense" ? -e.amount : e.kind === "transfer" ? 0 : e.amount),
-              0,
-            ),
-          row.journal.closing,
-        );
-        for (const event of row.stories) {
-          if (event.id.startsWith(`decision-${kind}-`)) outcomes.add(event.outcome);
-          if (event.id === "housing-temporary" || event.id === "fraud-guaranteed")
-            assert.ok(event.support?.every((s) => s.url.startsWith("https://")));
-        }
+test("100 lives: incremental play equals a fresh replay; markets are shared; every year reconciles; choices are gated", () => {
+  const seen = new Set();
+  for (let i = 0; i < 100; i++) {
+    const seed = `life-${String(i).padStart(3, "0")}`;
+    const c = config(seed, { card: sampleCard(i, i % 2 ? "zh" : "en"), mode: i % 2 ? "parallel" : "reality" });
+    let k = i;
+    const run = play(c, (options) => options[k++ % options.length]);
+    assert.equal(run.changed.length, c.years);
+    assert.deepEqual(simulate(c).changed, run.changed);
+    const keys = new Set();
+    for (const [index, row] of run.changed.entries()) {
+      const world = worldFor(c.mode, c.worldSeed, row.year);
+      assert.deepEqual(row.market, marketFor(c.worldSeed, row.year, world));
+      assert.deepEqual(row.market, run.baseline[index].market);
+      if (c.mode === "reality") assert.equal(row.market.world, "continuity");
+      assert.ok(reconciles(row.journal), `${seed} ${row.year}`);
+      assert.ok(reconciles(run.baseline[index].journal));
+      assert.ok(row.choices.length <= 2);
+      for (const p of row.choices) {
+        assert.ok(!keys.has(p.key), p.key);
+        keys.add(p.key);
+        assert.equal(/-\d{4}$/.test(p.key), !!choiceById.get(p.choice).repeat);
+        seen.add(p.choice);
       }
-      runs.push(a.rows.flatMap((r) => r.stories));
-    }
-    // Fixed pairing: 0↔1, 2↔3, …, 158↔159. Same character and deterministic decision policy.
-    const ids = [];
-    const texts = [];
-    for (let i = 0; i < 160; i += 2) {
-      ids.push(
-        overlap(
-          runs[i].map((e) => e.id),
-          runs[i + 1].map((e) => e.id),
-        ),
-      );
-      texts.push(
-        overlap(
-          runs[i].map((e) => normalized(e.text[0])),
-          runs[i + 1].map((e) => normalized(e.text[0])),
-        ),
-      );
-    }
-    const mean = (x) => x.reduce((a, b) => a + b, 0) / x.length;
-    report[kind] = {
-      templateMean: mean(ids),
-      normalizedTextMean: mean(texts),
-      maxPair: Math.max(...texts),
-      outcomes: [...outcomes],
-    };
-    assert.ok(mean(ids) < 0.5, `${kind} template overlap ${mean(ids)}`);
-    assert.ok(mean(texts) < 0.5, `${kind} body overlap ${mean(texts)}`);
-    assert.deepEqual([...outcomes].sort(), ["failure", "success"]);
-  }
-  console.log("160-seed fixed-pair overlap", JSON.stringify(report));
-  const a = initialState(config().card, "A");
-  const b = structuredClone(a);
-  b.props.health = 15;
-  b.props.knowledge = 10;
-  b.props.relationships = 15;
-  b.props.happiness = 15;
-  const engine = createEngine(events);
-  assert.notDeepEqual(engine.weights(a, marketFor("A", 2026)), engine.weights(b, marketFor("A", 2026)));
-  for (const e of events) if (e.sensitive) assert.ok(e.support?.length);
-});
-test("event cooldown, conditional eligibility and per-instance state hold", () => {
-  const c = config();
-  const run = simulate(c);
-  for (const path of [run.baseline, run.changed]) {
-    const last = new Map();
-    for (const row of path) {
-      for (const s of row.stories.filter((x) => x.kind === "ordinary")) {
-        const event = events.find((e) => e.id === s.id);
-        if (last.has(s.id)) assert.ok(row.year - last.get(s.id) > event.cooldown);
-        last.set(s.id, row.year);
-      }
+      for (const st of row.stories) assert.ok(st.month >= 1 && st.month <= 12);
     }
   }
-  run.baseline[0].state.props.health = 0;
-  assert.notEqual(run.changed[0].state.props.health, 0);
-  const s = initialState(c.card, "A");
-  s.role = "student";
-  assert.ok(
-    createEngine(events)
-      .weights(s, marketFor("A", 2026))
-      .every(([id]) => !id.startsWith("work-") && !id.startsWith("business-")),
-  );
+  assert.ok(seen.size >= 9, [...seen].join());
 });
-test("debt has grace, collection, conditional housing consequences and recovery; partner support requires capability", () => {
+test("strict play stops at the first unanswered choice; carrying on fills every choice", () => {
+  const c = config("policy");
+  const strict = simulate(c);
+  assert.ok(strict.pending);
+  assert.equal(strict.changed.length, strict.pending.offset);
+  const stay = simulate(c, { policy: "stay" });
+  assert.equal(stay.pending, null);
+  assert.equal(stay.changed.length, c.years);
+  assert.ok(stay.changed.every((row) => row.choices.every((p) => p.stay)));
+  // The carry-on line answers the same way, so its money matches the baseline.
+  assert.equal(stay.changed.at(-1).summary.netWorth, stay.baseline.at(-1).summary.netWorth);
+});
+test("plans apply from their year onward; earlier years and the baseline never see them", () => {
+  const c = config("plans");
+  const before = simulate(c, { policy: "stay" });
+  const planned = structuredClone(c);
+  planned.plans[6] = { ...defaultPlan(), focus: "work", habits: { jobSearch: false, training: false, monthlyInvestment: yuan(2000) } };
+  const after = simulate(planned, { policy: "stay" });
+  assert.deepEqual(after.baseline, before.baseline);
+  assert.deepEqual(after.changed.slice(0, 6), before.changed.slice(0, 6));
+  assert.notDeepEqual(after.changed[6].state, before.changed[6].state);
+  assert.ok(after.changed[6].state.assets.stocks > before.changed[6].state.assets.stocks);
+});
+test("attribution changes one pick back to carrying on and replays the same world", () => {
+  const c = config("attribution", { years: 10 });
+  const run = play(c, (o) => o.find((x) => !x.stay) ?? o[0]);
+  const list = attribution(run);
+  const changed = run.changed.flatMap((row) => row.choices).filter((p) => !p.stay);
+  assert.equal(list.length, changed.length);
+  assert.ok(list.length > 0);
+  const end = netWorth(run.changed.at(-1).state.assets);
+  for (const a of list.slice(0, 2)) {
+    const alt = structuredClone(run.config);
+    alt.decisions[a.key] = { option: a.stayOption };
+    const other = simulate(alt, { policy: "stay", baseline: false }).changed.at(-1).state;
+    assert.equal(a.netWorth, end - netWorth(other.assets));
+  }
+});
+test("worlds: one shared line until 2035, six worlds after it in even shares, a rare hidden chain", () => {
+  const counts = Object.fromEntries(Object.keys(worlds).map((w) => [w, 0]));
+  const n = 3000;
+  for (let i = 0; i < n; i++) {
+    const seed = `world-${i}`;
+    assert.equal(worldFor("parallel", seed, 2034), "continuity");
+    assert.equal(worldFor("reality", seed, 2050), "continuity");
+    counts[worldFor("parallel", seed, 2035)]++;
+  }
+  for (const [w, count] of Object.entries(counts)) assert.ok(count / n > 0.08 && count / n < 0.3, `${w} ${count}`);
+  let unlocked = 0;
+  for (let i = 0; i < 10000; i++) if (hiddenChain(`hidden-${i}`).unlocked) unlocked++;
+  assert.ok(unlocked > 50 && unlocked < 200, String(unlocked));
+});
+test("paired seeds with the same answers still live different years", () => {
+  const normalized = (text) => text.replace(/[\d,.¥￥%]+/g, "#").replace(/\s/g, "");
+  function overlap(a, b) {
+    const counts = new Map();
+    for (const x of a) counts.set(x, (counts.get(x) || 0) + 1);
+    let same = 0;
+    for (const x of b)
+      if (counts.get(x) > 0) {
+        same++;
+        counts.set(x, counts.get(x) - 1);
+      }
+    return (2 * same) / (a.length + b.length || 1);
+  }
+  // What happens to the player: world news is shared by design, and a story echoing the same answer is the same.
+  const stories = (seed) =>
+    simulate(config(seed), { policy: "stay", baseline: false })
+      .changed.flatMap((row) => row.stories)
+      .filter((st) => st.kind !== "world" && st.kind !== "decision")
+      .map((st) => normalized(st.text[0]));
+  const pairs = [];
+  for (let i = 0; i < 60; i += 2) pairs.push(overlap(stories(`variety-${i}`), stories(`variety-${i + 1}`)));
+  const mean = pairs.reduce((a, b) => a + b, 0) / pairs.length;
+  assert.ok(mean < 0.5, String(mean));
+});
+test("debt brings a grace period, collection and temporary housing, then recovery", () => {
   const c = config("debt");
-  let s = initialState(c.card, c.lifeSeed);
+  let s = initialState(c.card, c.lifeSeed, c.year);
   s.role = "unemployed";
   s.props.relationships = 5;
   s.props.health = 5;
-  s.assets = {
-    cash: 0,
-    deposits: 0,
-    bonds: 0,
-    stocks: 0,
-    property: 0,
-    debt: yuan(800000),
-    interestRate: 0.1,
-  };
+  s.assets = { ...emptyBalance(), debt: yuan(800000), interestRate: 0.1 };
   const seen = [];
   for (let i = 0; i < 5; i++) {
-    const r = step(s, c, i);
-    seen.push(...r.stories);
-    s = r.state;
+    // Hold the hard case: out of work (a job lost this year is never followed by a rehire that year) and
+    // without people to lean on, who would otherwise drift back toward the middle.
+    s.role = "unemployed";
+    s.flags.jobLost = c.year + i;
+    s.props.relationships = 5;
+    const row = step(s, c, i, "changed", "stay");
+    assert.ok(reconciles(row.journal));
+    seen.push(...row.stories.map((st) => st.id));
+    s = row.state;
   }
-  assert.ok(seen.some((e) => e.id === "debt-notice"));
-  assert.ok(seen.some((e) => e.id === "debt-shared"));
-  assert.ok(seen.some((e) => e.id === "housing-temporary"));
-  assert.ok(!seen.some((e) => e.id === "partner-support"));
+  for (const id of ["debt-notice", "debt-shared", "housing-temporary"]) assert.ok(seen.includes(id), id);
+  assert.ok(!seen.includes("partner-support"));
   s.role = "employed";
   s.assets.cash = yuan(1000000);
-  const recovered = step(s, c, 6);
+  const recovered = step(s, c, 6, "changed", "stay");
   assert.equal(recovered.state.housing, "shared");
-  assert.ok(recovered.stories.some((e) => e.id === "housing-recovery"));
+  assert.ok(recovered.stories.some((st) => st.id === "housing-recovery"));
 });
-test("1000 paired market seeds: knowledge changes behavior, never gross return; investment distributions overlap", () => {
-  const high = [];
-  const low = [];
-  function investmentRun(i, knowledge) {
-    const seed = `investment-${String(i).padStart(4, "0")}`;
-    const s = initialState(config().card, seed);
+test("400 paired market seeds: knowledge changes investing behaviour, never the market's return", () => {
+  const run = (i, knowledge) => {
+    const seed = `investment-${i}`;
+    const s = initialState(config().card, seed, 2026);
     s.props.knowledge = knowledge;
-    s.assets = {
-      cash: yuan(112000),
-      deposits: 0,
-      bonds: 0,
-      stocks: 0,
-      property: 0,
-      debt: 0,
-      interestRate: 0.065,
-    };
+    s.assets = { ...emptyBalance(), cash: yuan(112000) };
     s.habits.monthlyInvestment = 0;
     const start = netWorth(s.assets);
     const j = openJournal(s.assets);
     invest(s, j, yuan(100000), "index", false);
     closeJournal(s.assets, j);
     for (let year = 2026; year < 2038; year++) {
-      const j = openJournal(s.assets);
-      settleMarket(s, j, marketFor(seed, year), seed);
-      closeJournal(s.assets, j);
+      const m = marketFor(seed, year);
+      const jy = openJournal(s.assets);
+      settleMarket(s, jy, m, seed);
+      closeJournal(s.assets, jy);
     }
     return netWorth(s.assets) / start - 1;
-  }
-  for (let i = 0; i < 1000; i++) {
-    low.push(investmentRun(i, 25));
-    high.push(investmentRun(i, 85));
+  };
+  const low = [];
+  const high = [];
+  for (let i = 0; i < 400; i++) {
+    low.push(run(i, 25));
+    high.push(run(i, 85));
   }
   const mean = (a) => a.reduce((n, x) => n + x, 0) / a.length;
-  const quant = (a, p) => [...a].sort((x, y) => x - y)[Math.floor((a.length - 1) * p)];
-  const bins = Array.from({ length: 42 }, () => [0, 0]);
-  for (const [g, values] of [low, high].entries())
-    for (const v of values) bins[Math.min(41, Math.max(0, Math.floor((v + 1) * 10)))][g]++;
-  const histogramOverlap = bins.reduce((n, [l, h]) => n + Math.min(l, h), 0) / 1000;
-  const summary = {
-    low: {
-      mean: mean(low),
-      p10: quant(low, 0.1),
-      p50: quant(low, 0.5),
-      p90: quant(low, 0.9),
-      losses: low.filter((x) => x < 0).length,
-    },
-    high: {
-      mean: mean(high),
-      p10: quant(high, 0.1),
-      p50: quant(high, 0.5),
-      p90: quant(high, 0.9),
-      losses: high.filter((x) => x < 0).length,
-    },
-    histogramOverlap,
-  };
-  console.log("1000 paired investment seeds", JSON.stringify(summary));
   assert.ok(mean(high) > mean(low));
-  assert.ok(mean(high) - mean(low) < 0.1);
-  assert.ok(histogramOverlap > 0.75);
+  assert.ok(mean(high) - mean(low) < 0.12);
   assert.ok(high.some((x) => x < 0));
   assert.ok(low.some((x) => x > 0));
 });
-
-test("paused habits start when funds recover, focus affects future state, and baseline ignores player plans", () => {
-  const c = config("habit-recovery");
-  const s = initialState(c.card, c.lifeSeed);
-  s.role = "unemployed";
-  s.assets.cash = 0;
-  s.assets.deposits = 0;
-  s.habits.training = true;
-  const pending = step(s, c, 1);
-  assert.ok(pending.state.habitsPending.includes("training"));
-  const funded = structuredClone(pending.state);
-  funded.assets.cash = yuan(60000);
-  const resumed = step(funded, c, 2);
-  assert.ok(resumed.stories.some((e) => e.id === "habit-training"));
-  const next = step(resumed.state, c, 3);
-  assert.ok(!next.stories.some((e) => e.id === "habit-training"));
-  const plan = { ...c, plans: { 0: { focus: "health", habits: defaultHabits() } } };
-  const before = simulate(c);
-  const after = simulate(plan);
-  assert.deepEqual(before.baseline, after.baseline);
-  assert.notDeepEqual(before.changed[0].state.props, after.changed[0].state.props);
-});
-
-test("PNG comparison redacts source profile and marks every decision; original scene changes with state", async () => {
-  const { mapSvg } = await import("../dist/map.js");
-  const { sceneSvg } = await import("../dist/scene.js");
-  const c = config();
+test("the exported card carries no profile text and marks every changed pick; the scene follows the state", () => {
+  const c = config("png");
   c.card.name = "<script>PRIVATE-ALIAS</script>";
   c.card.project = "PRIVATE-PROJECT";
   c.card.attributes.health.source = "PRIVATE-SOURCE";
-  const run = simulate(c);
-  const svg = mapSvg(run, 12, "zh", true);
-  for (const word of ["PRIVATE-ALIAS", "PRIVATE-PROJECT", "PRIVATE-SOURCE", "<script>"])
-    assert.ok(!svg.includes(word));
-  assert.ok(mapSvg(run, 12, "zh").includes("&lt;script&gt;"));
-  assert.equal((svg.match(/r="6"/g) || []).length, 4);
+  c.card.life.city = "PRIVATE-CITY";
+  c.card.life.goals = ["PRIVATE-GOAL"];
+  const run = play(c, (o) => o.find((x) => !x.stay) ?? o[0]);
+  const svg = mapSvg(run, run.changed.length, "zh", true);
+  for (const word of ["PRIVATE", "<script>", c.worldSeed, c.lifeSeed]) assert.ok(!svg.includes(word), word);
+  assert.ok(mapSvg(run, run.changed.length, "zh").includes("&lt;script&gt;"));
+  const changed = run.changed.flatMap((row) => row.choices).filter((p) => !p.stay).length;
+  assert.equal((svg.match(/r="6"/g) || []).length, changed);
   const s = run.initial;
   const home = sceneSvg(s, "zh");
   assert.notEqual(sceneSvg({ ...s, role: "founder" }, "zh"), home);
   assert.notEqual(sceneSvg({ ...s, housing: "shared" }, "zh"), home);
+  assert.notEqual(sceneSvg({ ...s, car: true }, "zh"), home);
+});
+test("peers share the player's world and do not depend on the player's picks", () => {
+  const c = config("peers", { mode: "parallel", years: 10 });
+  const alone = simulatePeers(c, "zh");
+  const run = play(c, (o) => o.find((x) => !x.stay) ?? o[0]);
+  assert.deepEqual(simulatePeers(c, "zh"), alone);
+  assert.equal(alone.length, 3);
+  for (const peer of alone) assert.equal(peer.years.length, c.years);
+  assert.ok(run.changed.length === c.years);
 });

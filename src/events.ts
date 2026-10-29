@@ -415,7 +415,9 @@ const other: Row[] = [
     { happiness: 3, relationships: 1 },
   ],
 ];
-function rows(group: string, items: Row[], eligible?: Event["eligible"]): Event[] {
+/** `base` sets how often a row comes up next to the situation-aware everyday events (weight 12): the generic
+ * rows anyone can draw sit lower, so each life leans on its own circumstances. */
+function rows(group: string, items: Row[], eligible?: Event["eligible"], base = 10): Event[] {
   return items.map(([id, zh, en, e, money = 0], i) => ({
     id: `${group}-${id}`,
     text: [zh, en],
@@ -424,7 +426,7 @@ function rows(group: string, items: Row[], eligible?: Event["eligible"]): Event[
     weight: (s, m) =>
       Math.max(
         2,
-        10 +
+        base +
           (e.health && e.health > 0 ? (100 - s.props.health) / 8 : 0) +
           (e.knowledge && e.knowledge > 0 ? s.props.knowledge / 12 : 0) +
           (e.relationships && e.relationships > 0 ? s.props.relationships / 14 : 0) +
@@ -440,7 +442,7 @@ function rows(group: string, items: Row[], eligible?: Event["eligible"]): Event[
   }));
 }
 export const events: Event[] = [
-  ...rows("life", common).map((event) =>
+  ...rows("life", common, undefined, 6).map((event) =>
     event.id === "life-roof"
       ? { ...event, eligible: (s: State) => s.housing === "rent" || s.housing === "shared" }
       : event,

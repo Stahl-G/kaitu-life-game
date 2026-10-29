@@ -1,6 +1,7 @@
 import { type Journal, assetReturn, expense, liquid, transfer, yuan } from "./finance.js";
-import type { Market, State } from "./model.js";
+import type { CrashRule, Market, State, WorldId } from "./model.js";
 import { normal, sample } from "./random.js";
+import { worldModifiers } from "./world.js";
 /** Exact means/SDs below are authored GAME PARAMETERS, not fitted estimates or forecasts.
  * Numeric provenance: this configuration; qualitative references are listed alongside.
  * Returns are nominal RMB total-return proxies; no additional dividend credit.
@@ -26,33 +27,38 @@ export const marketConfig = {
     reference: "https://www.investor.gov/introduction-investing/getting-started/asset-allocation",
   },
   property: {
-    mean: 0.025,
-    volatility: 0.12,
+    mean: 0.01,
+    volatility: 0.06,
     source: "Game assumption for owner-occupied property price appreciation; no rent/dividend credited.",
     reference: "https://www.investor.gov/introduction-investing/getting-started/asset-allocation",
   },
   crisisProbability: 0.09,
 };
-export function marketFor(seed: string, year: number): Market {
-  const crisis = sample(seed, year, "crisis") < marketConfig.crisisProbability;
+/** A yearly index fall beyond this triggers the player's crash rule, or the question when the rule is "ask". */
+export const crashThreshold = 0.15;
+export function marketFor(seed: string, year: number, world: WorldId = "continuity"): Market {
+  const shift = worldModifiers[world];
+  const crisis = sample(seed, year, "crisis") < marketConfig.crisisProbability + shift.crisis;
   const returns = Object.fromEntries(
     Object.entries(marketConfig)
       .filter(([k]) => k !== "crisisProbability")
       .map(([key, value]) => {
         const c = value as typeof marketConfig.stocks;
         const crisisLoss = crisis
-          ? ({ deposits: 0, bonds: 0.02, stocks: 0.23, property: 0.14 }[key] ?? 0)
+          ? ({ deposits: 0, bonds: 0.02, stocks: 0.23, property: 0.08 }[key] ?? 0)
           : 0;
-        return [
-          key,
-          Math.max(-0.8, Math.min(0.8, c.mean + c.volatility * normal(seed, year, key) - crisisLoss)),
-        ];
+        const mean = c.mean + (key === "stocks" ? shift.stocks : 0);
+        return [key, Math.max(-0.8, Math.min(0.8, mean + c.volatility * normal(seed, year, key) - crisisLoss))];
       }),
   ) as Market["returns"];
   return {
     year,
     crisis,
+    world,
     demand: crisis ? -0.3 : Math.max(-0.2, Math.min(0.2, normal(seed, year, "demand") * 0.09)),
+    // Game settings: prices drift about 1.5% a year and rents about 2%, both shared by the two lines.
+    inflation: Math.max(-0.02, Math.min(0.08, 0.015 + shift.inflation + normal(seed, year, "inflation") * 0.008)),
+    rentGrowth: Math.max(-0.08, Math.min(0.12, 0.02 + shift.rent + normal(seed, year, "rent") * 0.025)),
     returns,
   };
 }
@@ -92,7 +98,15 @@ export function invest(
   s.investor = true;
   return amount;
 }
-export function settleMarket(s: State, j: Journal, m: Market, lifeSeed: string) {
+/** `temperament` keeps the seeded panic behaviour (used by the baseline line); a player rule replaces it.
+ * With `ask` nothing happens automatically: the player is asked at the start of the next year. */
+export function settleMarket(
+  s: State,
+  j: Journal,
+  m: Market,
+  lifeSeed: string,
+  crash: CrashRule | "temperament" = "temperament",
+) {
   const b = s.assets;
   const behavior = investBehavior(s, lifeSeed, m.year);
   if (s.investor && (s.flags.previousStockReturn ?? 0) > 0.18 && behavior.chase && liquid(b) > yuan(30000)) {
@@ -113,9 +127,15 @@ export function settleMarket(s: State, j: Journal, m: Market, lifeSeed: string) 
   }
   if (b.stocks + b.bonds > 0)
     expense(b, j, Math.round((b.stocks + b.bonds) * behavior.fee), "investment-fees");
-  if (m.returns.stocks < -0.12 && behavior.panic && b.stocks > 0) {
-    transfer(b, j, "stocks", "deposits", b.stocks, "panic-sale");
-    s.flags.panic = m.year;
+  if (m.returns.stocks < -crashThreshold && b.stocks > 0) {
+    if (crash === "sell" || (crash === "temperament" && behavior.panic)) {
+      transfer(b, j, "stocks", "deposits", b.stocks, "panic-sale");
+      s.flags.panic = m.year;
+      if (crash === "sell") s.flags.ruleSale = m.year;
+    } else if (crash === "add" && liquid(b) > yuan(30000)) {
+      transfer(b, j, "deposits", "stocks", Math.round((liquid(b) - yuan(12000)) * 0.3), "index-purchase");
+      s.flags.ruleAdd = m.year;
+    }
   }
   s.flags.previousStockReturn = m.returns.stocks;
 }

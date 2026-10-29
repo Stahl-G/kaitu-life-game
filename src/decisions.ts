@@ -11,7 +11,6 @@ import {
   clamp,
 } from "./model.js";
 import { sample } from "./random.js";
-export const decisionYears = [2, 5, 8, 11];
 export function eligibility(s: State, kind: DecisionKind): Text | null {
   if (kind === "business" && s.role === "founder") return ["已经在经营中", "Already running a business"];
   if (kind === "business" && (liquid(s.assets) < yuan(30000) || s.assets.debt > yuan(160000)))
@@ -285,6 +284,7 @@ export function applyDecision(s: State, j: Journal, m: Market, d: Decision, seed
   switch (d.kind) {
     case "career":
       expense(s.assets, j, yuan(4500), "career-cost");
+      s.flags.jobSince = m.year;
       s.role = success ? "employed" : "unemployed";
       s.salaryFactor = success ? s.salaryFactor * 1.16 : 0.9;
       changeProps(s, { knowledge: success ? 5 : 2, happiness: success ? 4 : -8, relationships: -2 });
@@ -406,7 +406,12 @@ export function progressChains(s: State, j: Journal, m: Market, seed: string): S
       "Bills after closing the shop disrupted sleep. You arranged an instalment discussion and reserved time to look for work.",
     ]);
   }
-  if (s.role === "unemployed" && s.family.partner && s.family.partnerCanSupport && s.arrearsYears > 0) {
+  if (
+    s.role === "unemployed" &&
+    (s.family.partner === "living" || s.family.partner === "married") &&
+    s.family.partnerCanSupport &&
+    s.arrearsYears > 0
+  ) {
     income(s.assets, j, yuan(18000), "partner-support");
     changeProps(s, { relationships: 2 });
     add("partner-support", [
