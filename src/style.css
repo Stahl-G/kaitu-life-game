@@ -959,9 +959,21 @@ main {
   font-size: 13px;
   color: var(--muted);
 }
-.progress {
+.year-track {
   grid-column: 1 / -1;
-  height: 4px;
+}
+.year-position {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.year-position strong { color: var(--ink); }
+.progress {
+  height: 10px;
   border-radius: 2px;
   background: var(--line-2);
   overflow: hidden;

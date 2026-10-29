@@ -27,7 +27,7 @@ export const app = {
   /** The current year has run out: a waiting choice or the end of the run is showing. */
   atEnd: false,
   playing: false,
-  speed: 1 as 1 | 2 | 4,
+  speed: 1 as 1 | 2 | 4 | 8,
   /** Index of a past year being looked at; time is paused meanwhile. */
   review: null as number | null,
   drawer: null as null | "money" | "plan" | "rules",

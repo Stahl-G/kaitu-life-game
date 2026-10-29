@@ -3,7 +3,7 @@ import { type Option, defaultPick, rejectPick } from "./choices.js";
 import { exportPng, mapSvg } from "./map.js";
 import type { CrashRule, Focus, Pick, Plan, Text, Travel, WorldId } from "./model.js";
 import { simulatePeers } from "./peers.js";
-import { beatAt, createYearClock, summaryAt } from "./playback.js";
+import { beatAt, createTurnTimer, createYearClock, summaryAt } from "./playback.js";
 import {
   type Attribution,
   type Config,
@@ -177,6 +177,7 @@ function render() {
     dialog.querySelector<HTMLElement>("[data-action=dialog-cancel]")?.focus();
   }
   clock.sync(app.speed);
+  scheduleTurn();
 }
 // ── The year clock ───────────────────────────────────────────────────────────
 /** Between settlements only the progress bar and the year's beats change; everything else waits for the year end. */
@@ -188,6 +189,10 @@ function tick(progress: number) {
   if (before < summaryAt && progress >= summaryAt) return settle();
   const bar = document.getElementById("year-progress");
   if (bar) bar.style.width = `${progress * 100}%`;
+  const meter = document.getElementById("year-meter");
+  if (meter) meter.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
+  const label = document.getElementById("year-position");
+  if (label) label.textContent = t(`${Math.min(12, Math.floor(progress * 12) + 1)} 月 · ${Math.round(progress * 100)}%`, `Month ${Math.min(12, Math.floor(progress * 12) + 1)} · ${Math.round(progress * 100)}%`);
   const shown = visibleCount(ch, before);
   if (visibleCount(ch, progress) === shown) return;
   const list = document.getElementById("beats");
@@ -197,7 +202,11 @@ function tick(progress: number) {
 }
 /** Seconds the settlement stays on screen before an automatic turn of the year. */
 const AUTO_TURN = 4000;
-let turnTimer: ReturnType<typeof setTimeout> | undefined;
+const turnTimer = createTurnTimer(
+  () => app.autoYear && app.holding && app.page === "play" && app.playing && app.review === null && !app.drawer && !app.dialog && !document.hidden,
+  nextYear,
+  AUTO_TURN,
+);
 /** The year's settlement stops the clock; the player turns the year, or it turns by itself when asked to. */
 function settle() {
   app.holding = true;
@@ -207,15 +216,10 @@ function settle() {
   scheduleTurn();
 }
 function scheduleTurn() {
-  clearTimeout(turnTimer);
-  if (!app.autoYear || !app.holding) return;
-  turnTimer = setTimeout(() => {
-    const free = app.page === "play" && app.playing && app.review === null && !app.drawer && !app.dialog && !document.hidden;
-    if (app.holding && app.autoYear && free) nextYear();
-  }, AUTO_TURN);
+  turnTimer.sync();
 }
 function nextYear() {
-  clearTimeout(turnTimer);
+  turnTimer.stop();
   app.holding = false;
   app.playing = true;
   app.pause = null;
@@ -272,7 +276,7 @@ function revealDecision() {
 // ── Starting and leaving a life ──────────────────────────────────────────────
 function resetView() {
   app.holding = false;
-  clearTimeout(turnTimer);
+  turnTimer.stop();
   app.review = null;
   app.drawer = null;
   app.menu = false;
@@ -364,7 +368,7 @@ function togglePlay() {
   render();
 }
 function setSpeed(value: number) {
-  if (value !== 1 && value !== 2 && value !== 4) return;
+  if (value !== 1 && value !== 2 && value !== 4 && value !== 8) return;
   app.speed = value;
   render();
 }
@@ -372,7 +376,7 @@ function setSpeed(value: number) {
 function skip() {
   const run = app.run;
   if (!run || app.review !== null || waiting() || finished()) return;
-  clearTimeout(turnTimer);
+  turnTimer.stop();
   app.holding = false;
   app.shown = Math.max(app.shown, run.changed.length);
   app.atEnd = true;
